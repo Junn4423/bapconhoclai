@@ -1158,6 +1158,9 @@ export default function Page() {
     try {
       localStorage.setItem("minh_anh_sound", String(next));
     } catch {}
+    if (next) {
+      playSound("toggle", true);
+    }
   };
 
   // Exam timer logic
@@ -1234,6 +1237,7 @@ export default function Page() {
       timer === "question" ? 5 : timeLimitSeconds,
     );
     setView("exam");
+    playSound("tap", soundEnabled);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -1317,7 +1321,10 @@ export default function Page() {
       <AppHeader
         soundEnabled={soundEnabled}
         onToggleSound={toggleSound}
-        onHome={() => setView("home")}
+        onHome={() => {
+          playSound("tap", soundEnabled);
+          setView("home");
+        }}
       />
 
       {/* Main Views */}
@@ -1326,7 +1333,10 @@ export default function Page() {
           stats={stats}
           soundEnabled={soundEnabled}
           onStart={(mode) => startSession(mode)}
-          onStartPresetPicker={() => setView("preset-picker")}
+          onStartPresetPicker={() => {
+            playSound("tap", soundEnabled);
+            setView("preset-picker");
+          }}
           onStartChapter={handleStartChapter}
         />
       )}
@@ -1334,7 +1344,10 @@ export default function Page() {
       {view === "preset-picker" && (
         <PresetPickerView
           presets={presets}
-          onBack={() => setView("home")}
+          onBack={() => {
+            playSound("tap", soundEnabled);
+            setView("home");
+          }}
           onStart={(preset) =>
             startSession("preset", preset.questions, preset.title, preset.id)
           }
@@ -1349,14 +1362,19 @@ export default function Page() {
           remainingSeconds={remainingSeconds}
           soundEnabled={soundEnabled}
           onAnswer={handleAnswer}
-          onExit={() => setView("home")}
+          onExit={() => {
+            playSound("tap", soundEnabled);
+            setView("home");
+          }}
           onPrevious={() => {
             if (currentIndex > 0) {
+              playSound("tap", soundEnabled);
               setCurrentIndex((prev) => prev - 1);
               if (session.timer === "question") setRemainingSeconds(5);
             }
           }}
           onNext={() => {
+            playSound("tap", soundEnabled);
             if (currentIndex < session.questions.length - 1) {
               setCurrentIndex((prev) => prev + 1);
               if (session.timer === "question") setRemainingSeconds(5);
@@ -1365,6 +1383,7 @@ export default function Page() {
             }
           }}
           onJump={(index) => {
+            playSound("tap", soundEnabled);
             setCurrentIndex(index);
             if (session.timer === "question") setRemainingSeconds(5);
           }}
@@ -1386,7 +1405,10 @@ export default function Page() {
               );
             }
           }}
-          onHome={() => setView("home")}
+          onHome={() => {
+            playSound("tap", soundEnabled);
+            setView("home");
+          }}
         />
       )}
     </div>
