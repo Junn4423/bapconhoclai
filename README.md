@@ -21,6 +21,9 @@ Mở `http://localhost:3000`.
 - Luyện trọn bộ 600 câu không giới hạn thời gian, có bản đồ câu và flashback.
 - 20 bộ ôn cố định; tổng 20 bộ phủ đủ 600 câu, học lại không đổi câu.
 - Tiến độ, điểm cao nhất và trạng thái âm thanh lưu trong `localStorage`.
+- Hộp quà 25 mốc: 20 Bộ ôn, 60 câu điểm liệt và PASS Thi thử hạng B; quà đi qua các trạng thái khóa, mở khóa, đã mở và đã nhận.
+- Progress v3 có migration từ v2, lifetime mock PASS chống đếm trùng session, IndexedDB snapshot mirror, export/import JSON và reset học không xóa quà đã nhận.
+- Trang Hộp quà nằm ở `/rewards`; dữ liệu chỉ ở trình duyệt, không cần database, API, email hoặc ENV.
 - Chime Web Audio nguyên bản, ngắn và âm lượng nhỏ cho thao tác, đúng/sai, hết giờ và hoàn thành.
 - Giao diện bo tròn, pastel, responsive cho điện thoại; icon giao diện dùng `lucide-react`.
 

@@ -3,6 +3,7 @@
 import { FormEvent, ReactNode, createContext, useContext, useEffect, useMemo, useState } from "react";
 import { PawPrint, LockKeyhole, ArrowRight } from "lucide-react";
 import { ACCESS_KEY } from "@/lib/progress";
+import { requestPersistentStorage } from "@/lib/indexeddb-backup";
 
 const ACCESS_HASH = "de10d3e8e21f219aad010fccdc78d97249f0f3151dff1302ab36d162c8ebbf30";
 
@@ -41,6 +42,10 @@ export function AccessGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     setStatus(hasValidAccessRecord() ? "open" : "locked");
   }, []);
+
+  useEffect(() => {
+    if (status === "open") void requestPersistentStorage();
+  }, [status]);
 
   const lockAccess = useMemo(
     () => () => {

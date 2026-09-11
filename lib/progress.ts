@@ -1,8 +1,10 @@
 import type { PracticeMode, Question } from "./exam";
+import { createDefaultRewards, unlockRewardsForMockCount, validateRewards, type RewardsState } from "./reward-engine";
 
-export const PROGRESS_KEY = "bap_con_progress_v2";
+export const PROGRESS_KEY = "bap_con_progress_v3";
+export const LEGACY_PROGRESS_KEY = "bap_con_progress_v2";
 export const ACCESS_KEY = "bap_con_access_v1";
-export const PROGRESS_VERSION = 2;
+export const PROGRESS_VERSION = 3;
 
 export type QuestionProgress = {
   attempts: number;
@@ -60,7 +62,7 @@ export type ExamHistoryEntry = {
 };
 
 export type ProgressData = {
-  version: 2;
+  version: 3;
   profile: { name: string };
   questions: Record<string, QuestionProgress>;
   signs: Record<string, VisualProgress>;
@@ -71,7 +73,20 @@ export type ProgressData = {
   };
   examHistory: ExamHistoryEntry[];
   currentSession: CurrentSession | null;
-  settings: { sound: boolean };
+  rewards: RewardsState;
+  settings: { sound: boolean; lastExportAt: string | null };
+};
+
+export type ProgressLoadResult = {
+  progress: ProgressData;
+  needsRecovery: boolean;
+  migrated: boolean;
+};
+
+export type ProgressExport = {
+  exportVersion: 3;
+  exportedAt: string;
+  progress: ProgressData;
 };
 
 const EMPTY_MODE_STATS = {
@@ -93,7 +108,8 @@ export function createDefaultProgress(sound = true): ProgressData {
     },
     examHistory: [],
     currentSession: null,
-    settings: { sound },
+    rewards: createDefaultRewards(),
+    settings: { sound, lastExportAt: null },
   };
 }
 
@@ -103,6 +119,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value);
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function validateQuestionIdList(value: unknown, label: string, allowEmpty = false) {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0) || value.length > 600) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const ids = value as unknown[];
+  if (ids.some((id) => !isInteger(id) || id < 1 || id > 600) || new Set(ids).size !== ids.length) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return ids as number[];
 }
 
 function validateQuestionProgress(value: unknown, id: string) {
@@ -131,7 +162,7 @@ function validateQuestionProgress(value: unknown, id: string) {
   if (typeof value.seen !== "boolean" || typeof value.mastered !== "boolean") {
     throw new Error(`Invalid flags for question ${id}`);
   }
-  if (value.lastAnsweredAt !== null && typeof value.lastAnsweredAt !== "string") {
+  if (value.lastAnsweredAt !== null && !isTimestamp(value.lastAnsweredAt)) {
     throw new Error(`Invalid timestamp for question ${id}`);
   }
 }
@@ -154,9 +185,7 @@ function validateCurrentSession(value: unknown) {
   if (!isRecord(value)) throw new Error("Invalid current session");
   if (typeof value.id !== "string" || typeof value.title !== "string") throw new Error("Invalid current session identity");
   if (!["reaction", "mock", "full", "preset", "liet", "chapter", "weak"].includes(String(value.mode))) throw new Error("Invalid current session mode");
-  if (!Array.isArray(value.questionIds) || value.questionIds.length === 0 || value.questionIds.length > 600) throw new Error("Invalid current session questions");
-  const ids = value.questionIds as unknown[];
-  if (ids.some((id) => !isInteger(id) || id < 1 || id > 600) || new Set(ids).size !== ids.length) throw new Error("Invalid current session question IDs");
+  const ids = validateQuestionIdList(value.questionIds, "current session question IDs") as unknown[];
   if (!isInteger(value.currentIndex) || value.currentIndex < 0 || value.currentIndex >= ids.length) throw new Error("Invalid current session index");
   if (!isRecord(value.answers)) throw new Error("Invalid current session answers");
   Object.entries(value.answers).forEach(([id, answer]) => {
@@ -166,14 +195,18 @@ function validateCurrentSession(value: unknown) {
   if (value.timer !== "question" && value.timer !== "exam" && value.timer !== "none") throw new Error("Invalid current session timer");
   if (value.remainingSeconds !== null && (!isInteger(value.remainingSeconds) || value.remainingSeconds < 0)) throw new Error("Invalid remaining time");
   if (value.timeLimitSeconds !== null && (!isInteger(value.timeLimitSeconds) || value.timeLimitSeconds < 0)) throw new Error("Invalid time limit");
-  if (typeof value.startedAt !== "string") throw new Error("Invalid session timestamp");
+  if (!isTimestamp(value.startedAt)) throw new Error("Invalid session timestamp");
 }
 
 function validateHistoryEntry(value: unknown) {
   if (!isRecord(value)) throw new Error("Invalid history entry");
-  if (typeof value.id !== "string" || typeof value.type !== "string") throw new Error("Invalid history identity");
+  if (typeof value.id !== "string" || !value.id || !["reaction", "mock", "full", "preset", "liet", "chapter", "weak"].includes(String(value.type))) throw new Error("Invalid history identity");
   if (!isInteger(value.score) || !isInteger(value.total) || value.score < 0 || value.total <= 0 || value.score > value.total) throw new Error("Invalid history score");
-  if (!Array.isArray(value.questionIds) || !Array.isArray(value.wrongQuestionIds) || typeof value.createdAt !== "string") throw new Error("Invalid history details");
+  const questionIds = validateQuestionIdList(value.questionIds, "history question IDs");
+  const wrongQuestionIds = validateQuestionIdList(value.wrongQuestionIds, "history wrong question IDs", true);
+  if (wrongQuestionIds.some((id) => !questionIds.includes(id))) throw new Error("History wrong question is not in session");
+  if (value.passed !== null && typeof value.passed !== "boolean") throw new Error("Invalid history result");
+  if (!isTimestamp(value.createdAt)) throw new Error("Invalid history timestamp");
 }
 
 export function validateProgress(value: unknown): asserts value is ProgressData {
@@ -191,13 +224,16 @@ export function validateProgress(value: unknown): asserts value is ProgressData 
     }
     validateQuestionProgress(question, id);
   });
-  if (value.signs !== undefined) {
-    if (!isRecord(value.signs)) throw new Error("Invalid visual progress object");
-    Object.entries(value.signs).forEach(([key, sign]) => {
-      if (!key || !isRecord(sign) || typeof sign.label !== "string" || typeof sign.name !== "string" || typeof sign.meaning !== "string" || !isInteger(sign.wrongCount) || !isInteger(sign.correctCount) || sign.wrongCount < 0 || sign.correctCount < 0 || typeof sign.lastSeenAt !== "string") {
-        throw new Error(`Invalid visual progress for ${key}`);
-      }
-    });
+  if (!isRecord(value.signs)) throw new Error("Invalid visual progress object");
+  Object.entries(value.signs).forEach(([key, sign]) => {
+    if (!key || !isRecord(sign) || typeof sign.label !== "string" || typeof sign.name !== "string" || typeof sign.meaning !== "string" || !isInteger(sign.wrongCount) || !isInteger(sign.correctCount) || sign.wrongCount < 0 || sign.correctCount < 0 || !isTimestamp(sign.lastSeenAt)) {
+      throw new Error(`Invalid visual progress for ${key}`);
+    }
+  });
+  if (!isRecord(value.rewards)) throw new Error("Invalid rewards object");
+  validateRewards(value.rewards);
+  if (!isRecord(value.settings) || typeof value.settings.sound !== "boolean" || (value.settings.lastExportAt !== null && !isTimestamp(value.settings.lastExportAt))) {
+    throw new Error("Invalid settings");
   }
   if (!isRecord(value.stats)) throw new Error("Invalid stats object");
   validateModeStats(value.stats.mock, "mock");
@@ -208,9 +244,6 @@ export function validateProgress(value: unknown): asserts value is ProgressData 
   }
   value.examHistory.forEach(validateHistoryEntry);
   if (value.currentSession !== null) validateCurrentSession(value.currentSession);
-  if (!isRecord(value.settings) || typeof value.settings.sound !== "boolean") {
-    throw new Error("Invalid settings");
-  }
 }
 
 function normalizeQuestionProgress(value: unknown): QuestionProgress {
@@ -237,17 +270,58 @@ function normalizeQuestionProgress(value: unknown): QuestionProgress {
   };
 }
 
-export function normalizeProgress(value: unknown, soundFallback = true): ProgressData {
-  const fallback = createDefaultProgress(soundFallback);
-  if (!isRecord(value) || value.version !== PROGRESS_VERSION) return fallback;
+function normalizeSigns(value: unknown): ProgressData["signs"] {
+  if (!isRecord(value)) return {};
+  const signs: ProgressData["signs"] = {};
+  Object.entries(value).forEach(([key, raw]) => {
+    if (!isRecord(raw) || typeof raw.label !== "string" || typeof raw.name !== "string" || typeof raw.meaning !== "string") return;
+    signs[key] = {
+      label: raw.label,
+      ...(typeof raw.code === "string" && raw.code ? { code: raw.code } : {}),
+      name: raw.name,
+      meaning: raw.meaning,
+      wrongCount: isInteger(raw.wrongCount) && raw.wrongCount >= 0 ? raw.wrongCount : 0,
+      correctCount: isInteger(raw.correctCount) && raw.correctCount >= 0 ? raw.correctCount : 0,
+      lastSeenAt: typeof raw.lastSeenAt === "string" ? raw.lastSeenAt : new Date(0).toISOString(),
+    };
+  });
+  return signs;
+}
 
+function normalizeRewards(value: unknown): RewardsState {
+  const fallback = createDefaultRewards();
+  if (!isRecord(value)) return fallback;
+  const items: RewardsState["items"] = {};
+  if (isRecord(value.items)) {
+    Object.entries(value.items).forEach(([rewardId, raw]) => {
+      if (!isRecord(raw) || raw.rewardId !== rewardId || !["unlocked", "revealed", "claimed"].includes(String(raw.status))) return;
+      items[rewardId] = {
+        rewardId,
+        status: raw.status as RewardsState["items"][string]["status"],
+        ...(typeof raw.unlockedAt === "string" ? { unlockedAt: raw.unlockedAt } : {}),
+        ...(typeof raw.revealedAt === "string" ? { revealedAt: raw.revealedAt } : {}),
+        ...(typeof raw.claimedAt === "string" ? { claimedAt: raw.claimedAt } : {}),
+        ...(isRecord(raw.trigger) ? { trigger: raw.trigger as RewardsState["items"][string]["trigger"] } : {}),
+      };
+    });
+  }
+  const processed = Array.isArray(value.processedExamSessionIds)
+    ? value.processedExamSessionIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : [];
+  return {
+    mockPassCountLifetime: isInteger(value.mockPassCountLifetime) && value.mockPassCountLifetime >= 0 ? value.mockPassCountLifetime : 0,
+    items,
+    processedExamSessionIds: processed,
+  };
+}
+
+function normalizeCore(value: Record<string, unknown>, soundFallback: boolean, rewards: RewardsState): ProgressData {
+  const fallback = createDefaultProgress(soundFallback);
   const questions: Record<string, QuestionProgress> = {};
   if (isRecord(value.questions)) {
     Object.entries(value.questions).forEach(([id, item]) => {
       const numericId = Number(id);
-      if (/^\d+$/.test(id) && numericId >= 1 && numericId <= 600) {
-        questions[id] = normalizeQuestionProgress(item);
-      }
+      if (/^\d+$/.test(id) && numericId >= 1 && numericId <= 600) questions[id] = normalizeQuestionProgress(item);
     });
   }
 
@@ -269,47 +343,138 @@ export function normalizeProgress(value: unknown, soundFallback = true): Progres
     ...fallback,
     profile: { name: isRecord(value.profile) && typeof value.profile.name === "string" ? value.profile.name : "Bắp" },
     questions,
-    signs: isRecord(value.signs) ? value.signs as unknown as ProgressData["signs"] : {},
+    signs: normalizeSigns(value.signs),
     stats,
     examHistory: Array.isArray(value.examHistory) ? value.examHistory.slice(-100) as ExamHistoryEntry[] : [],
     currentSession: isRecord(value.currentSession) ? value.currentSession as unknown as CurrentSession : null,
+    rewards,
     settings: {
       sound: isRecord(value.settings) && typeof value.settings.sound === "boolean" ? value.settings.sound : soundFallback,
+      lastExportAt: isRecord(value.settings) && (value.settings.lastExportAt === null || typeof value.settings.lastExportAt === "string") ? value.settings.lastExportAt as string | null : null,
     },
   };
 }
 
-export function loadProgress(): ProgressData {
-  if (typeof window === "undefined") return createDefaultProgress();
+export function migrateProgressToV3(value: unknown, soundFallback = true): ProgressData {
+  if (!isRecord(value) || value.version !== 2) return createDefaultProgress(soundFallback);
+  const normalized = normalizeCore(value, soundFallback, createDefaultRewards());
+  const seenMockSessionIds = new Set<string>();
+  const successfulMockHistory = normalized.examHistory.filter((entry) => {
+    if (entry.type !== "mock" || entry.passed !== true || seenMockSessionIds.has(entry.id)) return false;
+    seenMockSessionIds.add(entry.id);
+    return true;
+  });
+  const historicalMockPasses = successfulMockHistory.length;
+  const lastHistoricalPass = successfulMockHistory[successfulMockHistory.length - 1];
+  return {
+    ...normalized,
+    version: PROGRESS_VERSION,
+    rewards: unlockRewardsForMockCount(normalized.rewards, historicalMockPasses, lastHistoricalPass?.createdAt),
+  };
+}
+
+export function normalizeProgress(value: unknown, soundFallback = true): ProgressData {
+  if (!isRecord(value)) return createDefaultProgress(soundFallback);
+  if (value.version === 2) return migrateProgressToV3(value, soundFallback);
+  if (value.version !== PROGRESS_VERSION) return createDefaultProgress(soundFallback);
+  return normalizeCore(value, soundFallback, normalizeRewards(value.rewards));
+}
+
+function parseStoredProgress(raw: string, soundFallback: boolean) {
+  const parsed: unknown = JSON.parse(raw);
+  if (isRecord(parsed) && parsed.version === 2) {
+    const migrated = migrateProgressToV3(parsed, soundFallback);
+    validateProgress(migrated);
+    return { progress: migrated, migrated: true };
+  }
+  if (isRecord(parsed) && parsed.version === PROGRESS_VERSION) {
+    validateProgress(parsed);
+    return { progress: parsed, migrated: false };
+  }
+  throw new Error("Unsupported stored progress version");
+}
+
+export function loadProgressState(): ProgressLoadResult {
+  if (typeof window === "undefined") return { progress: createDefaultProgress(), needsRecovery: false, migrated: false };
   let soundFallback = true;
+  let v3Raw: string | null = null;
+  let legacyRaw: string | null = null;
   try {
     const oldSound = window.localStorage.getItem("bap_con_sound");
     if (oldSound !== null) soundFallback = oldSound === "true";
-    const raw = window.localStorage.getItem(PROGRESS_KEY);
-    if (!raw) return createDefaultProgress(soundFallback);
-    const parsed: unknown = JSON.parse(raw);
-    const progress = normalizeProgress(parsed, soundFallback);
-    validateProgress(progress);
-    return progress;
+    v3Raw = window.localStorage.getItem(PROGRESS_KEY);
+    legacyRaw = window.localStorage.getItem(LEGACY_PROGRESS_KEY);
+
+    if (v3Raw) {
+      try {
+        const loaded = parseStoredProgress(v3Raw, soundFallback);
+        if (loaded.migrated) saveProgress(loaded.progress);
+        return { progress: loaded.progress, needsRecovery: false, migrated: loaded.migrated };
+      } catch {
+        // A still-present v2 record is a safe local fallback before IndexedDB recovery.
+        if (!legacyRaw) throw new Error("Invalid v3 progress");
+      }
+    }
+    if (legacyRaw) {
+      const loaded = parseStoredProgress(legacyRaw, soundFallback);
+      saveProgress(loaded.progress);
+      return { progress: loaded.progress, needsRecovery: false, migrated: true };
+    }
+    return { progress: createDefaultProgress(soundFallback), needsRecovery: false, migrated: false };
   } catch {
     try {
-      const corrupt = window.localStorage.getItem(PROGRESS_KEY);
-      if (corrupt) window.localStorage.setItem(`${PROGRESS_KEY}_corrupt_${Date.now()}`, corrupt);
+      if (v3Raw) window.localStorage.setItem(`${PROGRESS_KEY}_corrupt_${Date.now()}`, v3Raw);
+      if (legacyRaw) window.localStorage.setItem(`${LEGACY_PROGRESS_KEY}_corrupt_${Date.now()}`, legacyRaw);
     } catch {
       // Private browsing may reject all storage operations.
     }
-    return createDefaultProgress(soundFallback);
+    return { progress: createDefaultProgress(soundFallback), needsRecovery: true, migrated: false };
   }
 }
 
+export function loadProgress(): ProgressData {
+  return loadProgressState().progress;
+}
+
 export function saveProgress(progress: ProgressData) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
   try {
     validateProgress(progress);
     window.localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+    return true;
   } catch {
     // Keep the in-memory state usable when storage is unavailable.
+    return false;
   }
+}
+
+export function buildProgressExport(progress: ProgressData, exportedAt = new Date().toISOString()): ProgressExport {
+  return { exportVersion: 3, exportedAt, progress };
+}
+
+export function parseProgressExport(value: unknown): ProgressData {
+  if (!isRecord(value) || value.exportVersion !== 3 || !isTimestamp(value.exportedAt) || !isRecord(value.progress) || value.progress.version !== PROGRESS_VERSION) {
+    throw new Error("Invalid progress export");
+  }
+  validateProgress(value.progress);
+  return value.progress;
+}
+
+export function resetLearningProgress(progress: ProgressData): ProgressData {
+  const fresh = createDefaultProgress(progress.settings.sound);
+  return {
+    ...fresh,
+    profile: progress.profile,
+    rewards: progress.rewards,
+    settings: progress.settings,
+  };
+}
+
+export function markExported(progress: ProgressData, exportedAt = new Date().toISOString()): ProgressData {
+  return {
+    ...progress,
+    settings: { ...progress.settings, lastExportAt: exportedAt },
+  };
 }
 
 export function updateQuestionProgress(

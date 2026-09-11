@@ -48,16 +48,32 @@ import { playSound } from "@/lib/sound";
 import { CatEffects } from "@/app/components/CatEffects";
 import { CatMascot } from "@/app/components/CatMascot";
 import { DriverLicenseCard } from "@/app/components/DriverLicenseCard";
+import { RewardHomeCard } from "@/app/components/rewards/RewardHomeCard";
+import { RewardUnlockToast } from "@/app/components/rewards/RewardUnlockToast";
+import { SnapshotPanel } from "@/app/components/rewards/SnapshotPanel";
 import { useAccessGate } from "@/app/components/AccessGate";
+import { applyRewardEvent } from "@/lib/reward-engine";
 import {
+  clearProgressSnapshots,
+  createProgressSnapshot,
+  listProgressSnapshots,
+  restoreLatestSnapshot,
+  restoreProgressSnapshot,
+  type ProgressSnapshot,
+} from "@/lib/indexeddb-backup";
+import {
+  buildProgressExport,
   createDefaultProgress,
   getChapterSummary,
   getProgressSummary,
   getWeakVisuals,
   getWeakQuestions,
-  loadProgress,
-  normalizeProgress,
+  LEGACY_PROGRESS_KEY,
+  loadProgressState,
+  markExported,
+  parseProgressExport,
   PROGRESS_KEY,
+  resetLearningProgress,
   saveProgress,
   updateModeProgress,
   updateVisualProgress,
@@ -190,8 +206,9 @@ function QuestionImages({ question, current = false, onReady }: { question: Ques
   );
 }
 
-function SettingsModal({ sound, onSound, onClose, onLock, onExport, onImport, onReset, onWipe }: {
+function SettingsModal({ sound, snapshots, onSound, onClose, onLock, onExport, onImport, onReset, onWipe, onCreateSnapshot, onRefreshSnapshots, onRestoreSnapshot }: {
   sound: boolean;
+  snapshots: ProgressSnapshot[];
   onSound: () => void;
   onClose: () => void;
   onLock: () => void;
@@ -199,24 +216,47 @@ function SettingsModal({ sound, onSound, onClose, onLock, onExport, onImport, on
   onImport: (file: File) => void;
   onReset: () => void;
   onWipe: () => void;
+  onCreateSnapshot: () => void;
+  onRefreshSnapshots: () => void;
+  onRestoreSnapshot: (snapshot: ProgressSnapshot) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    const focusable = () => Array.from(modalRef.current?.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])") ?? []).filter((element) => !element.hasAttribute("disabled"));
+    focusable()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key !== "Tab") return;
+      const elements = focusable();
+      if (!elements.length) return;
+      const current = document.activeElement;
+      const index = elements.indexOf(current as HTMLElement);
+      const next = event.shiftKey ? (index <= 0 ? elements.length - 1 : index - 1) : (index === elements.length - 1 ? 0 : index + 1);
+      event.preventDefault();
+      elements[next]?.focus();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); previous?.focus(); };
+  }, [onClose]);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <section className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()}>
+      <section ref={modalRef} className="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()}>
         <div className="settings-header"><div><p className="eyebrow">Dữ liệu học</p><h2 id="settings-title">Cài đặt</h2></div><button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={18} /></button></div>
         <div className="settings-list">
           <div className="settings-row"><div><strong>Âm thanh</strong><span>Âm thanh chạm và hoàn thành bài</span></div><button className={`toggle-button ${sound ? "on" : ""}`} onClick={onSound}>{sound ? "BẬT" : "TẮT"}</button></div>
-          <div className="settings-group"><strong>Dữ liệu học</strong><button className="settings-action" onClick={onExport}><Download size={16} /> Xuất tiến trình</button><button className="settings-action" onClick={() => input.current?.click()}><Upload size={16} /> Khôi phục tiến trình</button><input ref={input} className="sr-only" type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = ""; }} /><button className="settings-action danger" onClick={onReset}><RotateCcw size={16} /> Học lại từ đầu</button></div>
+          <div className="settings-group"><strong>Dữ liệu học</strong><button className="settings-action" onClick={onExport}><Download size={16} /> Sao lưu JSON</button><button className="settings-action" onClick={() => input.current?.click()}><Upload size={16} /> Khôi phục từ JSON</button><input ref={input} className="sr-only" type="file" accept="application/json,.json" onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = ""; }} /><button className="settings-action" onClick={onCreateSnapshot}><Download size={16} /> Tạo snapshot cục bộ</button><button className="settings-action danger" onClick={onReset}><RotateCcw size={16} /> Học lại từ đầu</button></div>
           <div className="settings-group"><strong>Thiết bị</strong><button className="settings-action" onClick={onLock}><LockKeyhole size={16} /> Khóa lại</button></div>
           <div className="settings-group danger-group"><strong>Nguy hiểm</strong><button className="settings-action danger" onClick={onWipe}><Trash2 size={16} /> Xóa toàn bộ dữ liệu trên thiết bị</button></div>
+          <SnapshotPanel snapshots={snapshots} onRefresh={onRefreshSnapshots} onCreate={onCreateSnapshot} onRestore={onRestoreSnapshot} />
         </div>
       </section>
     </div>
   );
 }
 
-function HomeView({ progress, currentSession, sound, onSound, onStart, onWrong, onResume, onDiscard, onSettings, onChapter, onVisualReview }: {
+function HomeView({ progress, currentSession, sound, onSound, onStart, onWrong, onResume, onDiscard, onSettings, onChapter, onVisualReview, onExport }: {
   progress: ProgressData;
   currentSession: CurrentSession | null;
   sound: boolean;
@@ -228,9 +268,12 @@ function HomeView({ progress, currentSession, sound, onSound, onStart, onWrong, 
   onSettings: () => void;
   onChapter: (chapter: number) => void;
   onVisualReview: (visual: VisualProgress) => void;
+  onExport: () => void;
 }) {
   const summary = getProgressSummary(QUESTION_BANK, progress);
   const weakVisuals = getWeakVisuals(progress);
+  const daysSinceExport = progress.settings.lastExportAt ? (Date.now() - Date.parse(progress.settings.lastExportAt)) / 86400000 : Infinity;
+  const needsBackupReminder = progress.examHistory.length > 0 && daysSinceExport >= 14;
   const cards: Array<[PracticeMode, string, string, string, string]> = [
     ["reaction", "Luyện nhanh — 30 giây/câu", "30 câu trộn đều luật, biển báo và tình huống để Bắp đọc kỹ rồi chọn chắc.", "30 câu · 30 giây/câu", "pink-card"],
     ["mock", "Thi thử hạng B", "Một đề tự sinh theo cấu trúc thật, có câu liệt và mốc đạt 27/30.", "30 câu · 20 phút", "blue-card"],
@@ -242,11 +285,15 @@ function HomeView({ progress, currentSession, sound, onSound, onStart, onWrong, 
     <>
       <AppHeader sound={sound} onSound={onSound} onHome={() => undefined} onSettings={onSettings} />
       <main className="container page-section">
-        <section className="hero-section"><div className="hero-grid"><article className="hero-card"><div className="hero-kicker"><Heart size={15} fill="currentColor" /> hello, Bắp iu</div><h1 className="hero-title">Bắp học lái nè.</h1><p className="hero-description">Góc nhỏ để Bắp luyện 600 câu lý thuyết theo nhịp của mình. Muốn học phần nào thì mình bắt đầu phần đó nha.</p><div className="hero-actions"><button className="primary-button" onClick={() => onStart("reaction")}><Zap size={17} /> Luyện nhanh 30 giây</button><button className="secondary-button" onClick={() => onStart("mock")}><GraduationCap size={17} /> Thi thử ngay</button><button className="ghost-button" onClick={() => onStart("liet")}><ShieldAlert size={16} /> 60 câu liệt</button></div></article><CatMascot soundEnabled={sound} /></div><div className="driver-permit-container"><DriverLicenseCard seen={summary.seen} mastered={summary.mastered} bestMock={progress.stats.mock.bestScore} /></div></section>
+        <section className="hero-section"><div className="hero-grid"><article className="hero-card"><div className="hero-kicker"><Heart size={15} fill="currentColor" /> hello, Bắp iu</div><h1 className="hero-title">Bắp iu học lái.</h1><p className="hero-description">Góc nhỏ để Bắp luyện 600 câu lý thuyết theo nhịp của mình. Muốn học phần nào thì mình bắt đầu phần đó nha.</p><div className="hero-actions"><button className="primary-button" onClick={() => onStart("reaction")}><Zap size={17} /> Luyện nhanh 30 giây</button><button className="secondary-button" onClick={() => onStart("mock")}><GraduationCap size={17} /> Thi thử ngay</button><button className="ghost-button" onClick={() => onStart("liet")}><ShieldAlert size={16} /> 60 câu liệt</button></div></article><CatMascot soundEnabled={sound} /></div><div className="driver-permit-container"><DriverLicenseCard seen={summary.seen} mastered={summary.mastered} bestMock={progress.stats.mock.bestScore} /></div></section>
 
         {currentSession && currentSession.currentIndex < currentSession.questionIds.length && <section className="resume-card"><div><p className="eyebrow">Học tiếp nha?</p><h2>Đang ở câu {currentSession.currentIndex + 1} / {currentSession.questionIds.length}</h2><p>{currentSession.title}</p></div><div className="resume-actions"><button className="primary-button small-button" onClick={onResume}><Play size={15} /> Tiếp tục</button><button className="ghost-button small-button" onClick={onDiscard}>Bỏ bài này</button></div></section>}
 
         <section className="progress-dashboard section-block"><div className="section-heading"><div><p className="eyebrow">Tiến độ của Bắp</p><h2 className="section-title">Mình đã học tới đâu rồi?</h2></div><p className="section-note">Số liệu tính từ từng câu Bắp đã trả lời trên thiết bị này.</p></div><div className="progress-dashboard-grid"><div className="progress-main-card"><div className="progress-main-heading"><strong>{summary.seen} / 600 câu đã gặp</strong><span>{Math.round(summary.seen / 6)}%</span></div><div className="progress-track large-track"><div className="progress-fill" style={{ width: `${Math.max(summary.seen ? 2 : 0, summary.seen / 6)}%` }} /></div><div className="progress-stat-grid"><button onClick={() => onStart("full")}><strong>{summary.correct}</strong><span>Đã trả lời đúng</span></button><button onClick={() => onStart("full")}><strong>{summary.mastered}</strong><span>Đã thuộc</span></button><button onClick={onWrong}><strong>{summary.needsReview}</strong><span>Cần ôn lại</span></button><button onClick={() => onStart("full")}><strong>{summary.unseen}</strong><span>Chưa học</span></button></div></div><button className="weak-questions-card" onClick={onWrong}><span className="mode-icon orange"><ShieldAlert size={22} /></span><strong>Câu Bắp hay nhầm</strong><span>Mấy câu mình từng chọn sai, gom lại đây để coi lại nha.</span><span className="weak-card-action">{summary.needsReview ? `${summary.needsReview} câu cần coi lại` : "Chưa có câu sai"} <ChevronRight size={16} /></span></button></div></section>
+
+        <RewardHomeCard rewards={progress.rewards} />
+
+        {needsBackupReminder && <section className="backup-reminder section-block"><div><p className="eyebrow">Nhắc nhẹ cho Bắp</p><h2>Sao lưu tiến trình nha</h2><p>Lâu rồi mình chưa tải file backup ra ngoài. Có file này thì tiến độ học và Hộp quà sẽ yên tâm hơn đó.</p></div><button className="secondary-button small-button" onClick={onExport}><Download size={15} /> Tải file backup</button></section>}
 
         <section className="section-block visual-mistakes-section"><div className="section-heading"><div><p className="eyebrow">Biển Bắp hay nhầm</p><h2 className="section-title">Nhớ cả biển, không chỉ nhớ câu</h2></div><p className="section-note">Mỗi lần gặp câu có hình, Bông ghi lại các biển/vạch để Bắp ôn riêng.</p></div>{weakVisuals.length > 0 ? <div className="visual-mistakes-grid">{weakVisuals.slice(0, 6).map((visual) => <button className="visual-mistake-card" key={visual.code ? `code:${visual.code}` : `${visual.label}:${visual.name}`} onClick={() => onVisualReview(visual)}><span className="visual-mistake-label">{visual.label}{visual.code && ` · ${visual.code}`}</span><strong>{visual.name}</strong><span>Sai: {visual.wrongCount} lần · Đúng: {visual.correctCount} lần</span><small>Ôn lại <ChevronRight size={14} /></small></button>)}</div> : <div className="empty-state">Bắp chưa có biển nào được ghi nhận là hay nhầm nha.</div>}</section>
 
@@ -323,13 +370,129 @@ export function ExamApp() {
   const [sound, setSound] = useState(true);
   const [settings, setSettings] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [storageNotice, setStorageNotice] = useState<string | null>(null);
+  const [recoveryActions, setRecoveryActions] = useState(false);
+  const [newRewardIds, setNewRewardIds] = useState<string[]>([]);
+  const [snapshots, setSnapshots] = useState<ProgressSnapshot[]>([]);
+  const finishedSessionId = useRef<string | null>(null);
   const { lockAccess } = useAccessGate();
   const presets = useMemo(() => buildPresetExams(QUESTION_BANK), []);
 
-  useEffect(() => { const saved = loadProgress(); setProgress(saved); setSound(saved.settings.sound); setHydrated(true); }, []);
-  useEffect(() => { const sync = (event: StorageEvent) => { if (event.key !== PROGRESS_KEY) return; const saved = loadProgress(); setProgress(saved); setSound(saved.settings.sound); }; window.addEventListener("storage", sync); return () => window.removeEventListener("storage", sync); }, []);
+  useEffect(() => {
+    const loaded = loadProgressState();
+    setProgress(loaded.progress);
+    setSound(loaded.progress.settings.sound);
+    setHydrated(true);
+    if (loaded.migrated) void createProgressSnapshot(loaded.progress, "auto");
+    if (loaded.needsRecovery) {
+      void restoreLatestSnapshot().then((restored) => {
+        if (restored) {
+          saveProgress(restored);
+          setProgress(restored);
+          setSound(restored.settings.sound);
+          setStorageNotice("Bắp ơi, dữ liệu chính bị lỗi nên hệ thống đã khôi phục bản gần nhất nha.");
+          setRecoveryActions(false);
+        } else {
+          setStorageNotice("Không đọc được tiến trình cũ. Bắp thử khôi phục file backup hoặc bắt đầu lại nha.");
+          setRecoveryActions(true);
+        }
+      });
+    }
+  }, []);
+  useEffect(() => { const sync = (event: StorageEvent) => { if (event.key !== PROGRESS_KEY) return; const loaded = loadProgressState(); setProgress(loaded.progress); setSound(loaded.progress.settings.sound); }; window.addEventListener("storage", sync); return () => window.removeEventListener("storage", sync); }, []);
+  useEffect(() => { if (!settings) return; void listProgressSnapshots().then(setSnapshots); }, [settings]);
   const commit = (next: ProgressData) => { setProgress(next); saveProgress(next); };
   const toggleSound = () => { const next = !sound; setSound(next); commit({ ...progress, settings: { ...progress.settings, sound: next } }); if (next) playSound("toggle", true); };
+  const exportProgress = () => {
+    const exportedAt = new Date().toISOString();
+    const next = markExported(progress, exportedAt);
+    commit(next);
+    const blob = new Blob([JSON.stringify(buildProgressExport(next, exportedAt), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `bap-progress-${exportedAt.slice(0, 16).replace("T", "-").replace(":", "")}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    void createProgressSnapshot(next, "manual");
+    setStorageNotice("Đã tải file backup của Bắp xuống máy rồi nha.");
+    setRecoveryActions(false);
+  };
+  const createSnapshot = () => {
+    void createProgressSnapshot(progress, "manual").then((ok) => {
+      setStorageNotice(ok ? "Đã lưu một bản dự phòng trên thiết bị này." : "Thiết bị chưa cho phép lưu bản dự phòng nha.");
+      void listProgressSnapshots().then(setSnapshots);
+    });
+  };
+  const restoreSnapshot = (snapshot: ProgressSnapshot) => {
+    if (!window.confirm("Khôi phục bản này nha? Hệ thống sẽ lưu trạng thái hiện tại trước khi thay thế.")) return;
+    void (async () => {
+      await createProgressSnapshot(progress, "manual");
+      const restored = await restoreProgressSnapshot(snapshot.id);
+      if (!restored) {
+        setStorageNotice("Bản lưu này đang có vấn đề. Bắp thử chọn bản backup khác nha.");
+        return;
+      }
+      commit(restored);
+      setSound(restored.settings.sound);
+      setSession(null);
+      setResult(null);
+      setView("home");
+      setSettings(false);
+      setStorageNotice("Đã khôi phục bản dự phòng cho Bắp rồi nha.");
+    })();
+  };
+  const importProgress = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      void (async () => {
+        try {
+          const restored = parseProgressExport(JSON.parse(String(reader.result)));
+          if (!window.confirm("File backup sẽ thay thế tiến trình hiện tại, bao gồm trạng thái phần thưởng. Bắp muốn khôi phục nha?")) return;
+          await createProgressSnapshot(progress, "before_import");
+          commit(restored);
+          setSound(restored.settings.sound);
+          setSession(null);
+          setResult(null);
+          setView("home");
+          setSettings(false);
+          setStorageNotice("Đã khôi phục tiến trình và Hộp quà của Bắp rồi nha.");
+        } catch {
+          window.alert("File này chưa đúng định dạng backup của Bắp.");
+        }
+      })();
+    };
+    reader.readAsText(file);
+  };
+  const resetLearning = () => {
+    if (!window.confirm("Bắp muốn học lại từ đầu hả? Việc này sẽ xóa câu đã học, lịch sử thi, câu hay sai và bài đang làm. Quà đã mở/đã nhận và số lần PASS vẫn được giữ.")) return;
+    void (async () => {
+      await createProgressSnapshot(progress, "before_reset");
+      const next = resetLearningProgress(progress);
+      commit(next);
+      setSession(null);
+      setResult(null);
+      setView("home");
+      setSettings(false);
+    })();
+  };
+  const wipeDeviceData = () => {
+    if (!window.confirm("Thao tác này sẽ xóa tiến trình học, lịch sử thi, câu hay sai, bài đang làm, toàn bộ Hộp quà và trạng thái quà đã nhận. Nếu chưa xuất file backup, dữ liệu có thể mất hoàn toàn. Bắp vẫn muốn xóa tất cả nha?")) return;
+    void (async () => {
+      await createProgressSnapshot(progress, "before_reset");
+      try {
+        window.localStorage.removeItem(PROGRESS_KEY);
+        window.localStorage.removeItem(LEGACY_PROGRESS_KEY);
+        window.localStorage.removeItem("bap_con_sound");
+        window.localStorage.removeItem("bap_con_stats");
+      } catch {
+        // Continue to clear IndexedDB and lock the app if localStorage is unavailable.
+      }
+      await clearProgressSnapshots();
+      setSettings(false);
+      lockAccess();
+    })();
+  };
 
   const snapshot = (active: Session, activeIndex: number, activeAnswers: AnswerMap, remaining: number | null) => {
     const current: CurrentSession = { id: active.id, mode: active.mode, title: active.title, questionIds: active.questions.map((question) => question.id), currentIndex: activeIndex, answers: Object.fromEntries(Object.entries(activeAnswers).map(([id, answer]) => [String(id), answer])), startedAt: progress.currentSession?.id === active.id ? progress.currentSession.startedAt : new Date().toISOString(), timer: active.timer, remainingSeconds: remaining, timeLimitSeconds: active.timeLimitSeconds, presetId: active.presetId };
@@ -339,14 +502,38 @@ export function ExamApp() {
 
   const finish = () => {
     if (!session) return;
+    if (finishedSessionId.current === session.id) return;
+    finishedSessionId.current = session.id;
+    const completedAt = new Date().toISOString();
     let score = 0;
     let lietWrong = false;
     const rows = session.questions.map((question) => { const selected = answers[question.id] ?? null; const isCorrect = selected === question.correct; if (isCorrect) score += 1; if (question.isLiet && !isCorrect) lietWrong = true; return { question, selected, isCorrect }; });
     const passed = session.mode === "mock" || session.mode === "preset" ? score >= 27 && !lietWrong : session.mode === "liet" ? score === session.questions.length : null;
     const nextResult: ExamResult = { id: session.id, mode: session.mode, title: session.title, rows, score, passed, lietWrong, presetId: session.presetId };
-    let next: ProgressData = { ...progress, currentSession: null, examHistory: [...progress.examHistory, { id: session.id, type: session.mode, score, total: session.questions.length, passed, questionIds: session.questions.map((question) => question.id), wrongQuestionIds: rows.filter((row) => !row.isCorrect).map((row) => row.question.id), createdAt: new Date().toISOString() }].slice(-100) };
+    let next: ProgressData = { ...progress, currentSession: null, examHistory: [...progress.examHistory, { id: session.id, type: session.mode, score, total: session.questions.length, passed, questionIds: session.questions.map((question) => question.id), wrongQuestionIds: rows.filter((row) => !row.isCorrect).map((row) => row.question.id), createdAt: completedAt }].slice(-100) };
     if (session.mode === "mock" || session.mode === "reaction" || session.mode === "liet") next = updateModeProgress(next, session.mode, score, session.questions.length);
-    commit(next); setResult(nextResult); setView("result"); window.scrollTo({ top: 0, behavior: "smooth" }); playSound(passed ? "finish" : "timeout", sound);
+    let rewardState = next.rewards;
+    let newlyUnlocked: string[] = [];
+    if (session.mode === "preset" && session.presetId !== undefined) {
+      const mutation = applyRewardEvent(rewardState, { type: "preset_completed", presetNo: session.presetId, score, total: session.questions.length, lietWrong, sourceSessionId: session.id }, completedAt);
+      rewardState = mutation.rewards;
+      newlyUnlocked = [...newlyUnlocked, ...mutation.newlyUnlocked];
+    }
+    if (session.mode === "liet" && passed === true) {
+      const mutation = applyRewardEvent(rewardState, { type: "liet_completed", score, total: session.questions.length, sourceSessionId: session.id }, completedAt);
+      rewardState = mutation.rewards;
+      newlyUnlocked = [...newlyUnlocked, ...mutation.newlyUnlocked];
+    }
+    if (session.mode === "mock" && passed === true) {
+      const mutation = applyRewardEvent(rewardState, { type: "mock_pass", score, total: session.questions.length, lietWrong, sourceSessionId: session.id }, completedAt);
+      rewardState = mutation.rewards;
+      newlyUnlocked = [...newlyUnlocked, ...mutation.newlyUnlocked];
+    }
+    next = { ...next, rewards: rewardState };
+    commit(next);
+    void createProgressSnapshot(next, "auto");
+    setNewRewardIds(newlyUnlocked);
+    setResult(nextResult); setView("result"); window.scrollTo({ top: 0, behavior: "smooth" }); playSound(passed ? "finish" : "timeout", sound);
   };
 
   useEffect(() => {
@@ -367,6 +554,8 @@ export function ExamApp() {
     if (!customQuestions && mode === "liet") { questions = makeLietSet(QUESTION_BANK); titleValue = "60 câu điểm liệt"; }
     if (!customQuestions && mode === "full") questions = QUESTION_BANK;
     if (!questions.length) return;
+    finishedSessionId.current = null;
+    setNewRewardIds([]);
     const nextSession: Session = { id: `${mode}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, mode, title: titleValue, questions, timer, timeLimitSeconds: limit, presetId };
     setSession(nextSession); setIndex(0); setAnswers({}); setSeconds(null); setReady(false); setResult(null); setView("exam"); commit({ ...progress, currentSession: { id: nextSession.id, mode, title: titleValue, questionIds: questions.map((question) => question.id), currentIndex: 0, answers: {}, startedAt: new Date().toISOString(), timer, remainingSeconds: null, timeLimitSeconds: limit, presetId } }); playSound("tap", sound); window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -384,5 +573,17 @@ export function ExamApp() {
 
   if (!hydrated) return null;
   const home = () => { if (session && view === "exam") saveSnapshot(session); setView("home"); };
-  return <div className="app-shell"><CatEffects />{view === "home" && <HomeView progress={progress} currentSession={progress.currentSession} sound={sound} onSound={toggleSound} onStart={(mode) => mode === "preset" ? setView("preset-picker") : start(mode)} onWrong={() => setView("weak-picker")} onResume={resume} onDiscard={() => commit({ ...progress, currentSession: null })} onSettings={() => setSettings(true)} onChapter={(chapter) => start("chapter", makeChapterSet(QUESTION_BANK, chapter), `Chương ${chapter}: ${CHAPTERS[chapter - 1][1]}`)} onVisualReview={(visual) => { const questions = QUESTION_BANK.filter((question) => question.explanation?.visualExplanations?.some((item) => visual.code ? item.code === visual.code : item.label === visual.label && item.name === visual.name)); if (questions.length) start("chapter", questions, `${visual.label} — ${visual.name}`); }} />}{view === "weak-picker" && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><WeakQuestionsPicker progress={progress} onBack={home} onStart={(questions) => start("chapter", questions, "Câu Bắp hay nhầm")} /></>}{view === "preset-picker" && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><PresetPicker presets={presets} onBack={home} onStart={(preset) => start("preset", preset.questions, preset.title, preset.id)} /></>}{view === "exam" && session && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><ExamView session={session} index={index} answers={answers} seconds={seconds} ready={ready} sound={sound} onReady={setReady} onAnswer={answer} onNext={nextQuestion} onPrevious={previousQuestion} onJump={jump} onExit={home} onFinish={finish} /></>}{view === "result" && result && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><ResultView result={result} onRetry={() => session && start(session.mode, session.questions, session.title, session.presetId)} onNew={() => session && (session.mode === "mock" || session.mode === "reaction" ? start(session.mode) : start(session.mode, session.questions, session.title, session.presetId))} onHome={home} /></>}{settings && <SettingsModal sound={sound} onSound={toggleSound} onClose={() => setSettings(false)} onLock={() => { setSettings(false); lockAccess(); }} onExport={() => { const blob = new Blob([JSON.stringify(progress, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "bap-progress.json"; link.click(); URL.revokeObjectURL(url); }} onImport={(file) => { const reader = new FileReader(); reader.onload = () => { try { const parsed: unknown = JSON.parse(String(reader.result)); const restored = normalizeProgress(parsed, sound); validateProgress(restored); if (!window.confirm("Khôi phục tiến trình này và ghi đè dữ liệu hiện tại nha?")) return; commit(restored); setSound(restored.settings.sound); setSession(null); setResult(null); setView("home"); setSettings(false); } catch { window.alert("File tiến trình chưa đúng định dạng nên Bắp chưa thể khôi phục nha."); } }; reader.readAsText(file); }} onReset={() => { if (!window.confirm("Bắp muốn học lại từ đầu hả? Việc này sẽ xóa câu đã học, lịch sử thi, câu hay sai và bài đang làm. Mã truy cập vẫn được giữ.")) return; commit(createDefaultProgress(sound)); setSession(null); setResult(null); setView("home"); setSettings(false); }} onWipe={() => { if (!window.confirm("Xóa luôn tiến trình, cài đặt và trạng thái đã mở khóa trên thiết bị này nha?")) return; try { window.localStorage.removeItem(PROGRESS_KEY); window.localStorage.removeItem("bap_con_sound"); window.localStorage.removeItem("bap_con_stats"); } catch { /* storage may be unavailable */ } setSettings(false); lockAccess(); }} />}</div>;
+  return (
+    <div className="app-shell">
+      <CatEffects />
+      {view === "home" && <HomeView progress={progress} currentSession={progress.currentSession} sound={sound} onSound={toggleSound} onStart={(mode) => mode === "preset" ? setView("preset-picker") : start(mode)} onWrong={() => setView("weak-picker")} onResume={resume} onDiscard={() => commit({ ...progress, currentSession: null })} onSettings={() => setSettings(true)} onChapter={(chapter) => start("chapter", makeChapterSet(QUESTION_BANK, chapter), `Chương ${chapter}: ${CHAPTERS[chapter - 1][1]}`)} onVisualReview={(visual) => { const questions = QUESTION_BANK.filter((question) => question.explanation?.visualExplanations?.some((item) => visual.code ? item.code === visual.code : item.label === visual.label && item.name === visual.name)); if (questions.length) start("chapter", questions, `${visual.label} — ${visual.name}`); }} onExport={exportProgress} />}
+      {view === "weak-picker" && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><WeakQuestionsPicker progress={progress} onBack={home} onStart={(questions) => start("chapter", questions, "Câu Bắp hay nhầm")} /></>}
+      {view === "preset-picker" && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><PresetPicker presets={presets} onBack={home} onStart={(preset) => start("preset", preset.questions, preset.title, preset.id)} /></>}
+      {view === "exam" && session && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><ExamView session={session} index={index} answers={answers} seconds={seconds} ready={ready} sound={sound} onReady={setReady} onAnswer={answer} onNext={nextQuestion} onPrevious={previousQuestion} onJump={jump} onExit={home} onFinish={finish} /></>}
+      {view === "result" && result && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><ResultView result={result} onRetry={() => session && start(session.mode, session.questions, session.title, session.presetId)} onNew={() => session && (session.mode === "mock" || session.mode === "reaction" ? start(session.mode) : start(session.mode, session.questions, session.title, session.presetId))} onHome={home} /></>}
+      {settings && <SettingsModal sound={sound} snapshots={snapshots} onSound={toggleSound} onClose={() => setSettings(false)} onLock={() => { setSettings(false); lockAccess(); }} onExport={exportProgress} onImport={importProgress} onReset={resetLearning} onWipe={wipeDeviceData} onCreateSnapshot={createSnapshot} onRefreshSnapshots={() => { void listProgressSnapshots().then(setSnapshots); }} onRestoreSnapshot={restoreSnapshot} />}
+      {storageNotice && <aside className="storage-notice" role="status"><div><strong>{storageNotice}</strong>{recoveryActions && <span>File backup hợp lệ có thể khôi phục trong Cài đặt.</span>}</div>{recoveryActions && <div className="storage-notice-actions"><button className="secondary-button small-button" onClick={() => setSettings(true)}>Khôi phục file backup</button><button className="ghost-button small-button" onClick={resetLearning}>Bắt đầu lại</button></div>}<button className="icon-button" onClick={() => setStorageNotice(null)} aria-label="Đóng thông báo"><X size={15} /></button></aside>}
+      <RewardUnlockToast rewardIds={newRewardIds} onClose={() => setNewRewardIds([])} />
+    </div>
+  );
 }
