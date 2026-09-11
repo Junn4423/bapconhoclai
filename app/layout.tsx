@@ -18,7 +18,7 @@ const quicksand = Quicksand({
 
 export const metadata: Metadata = {
   title: "Bắp con học lái",
-  description: "Góc học lý thuyết lái xe dịu dàng dành riêng cho Bắp iu.",
+  description: "Góc học lý thuyết lái xe của Bắp.",
   icons: {
     icon: "/favicon.svg",
   },

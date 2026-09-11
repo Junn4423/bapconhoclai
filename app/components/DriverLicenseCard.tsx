@@ -3,42 +3,41 @@
 import { Award, Car, CheckCircle2, ShieldCheck, Sparkles, Trophy } from "lucide-react";
 
 interface DriverLicenseProps {
-  sessions: number;
-  best: number;
-  remembered: number;
+  seen: number;
+  mastered: number;
+  bestMock: number;
 }
 
 export function DriverLicenseCard({
-  sessions,
-  best,
-  remembered,
+  seen,
+  mastered,
+  bestMock,
 }: DriverLicenseProps) {
-  // Determine cute rank based on stats
-  let rankTitle = "Tập sự đáng yêu 🐣";
+  let rankTitle = "Mới bắt đầu 🐣";
   let rankColor = "pink";
-  if (remembered >= 400 || best >= 28) {
-    rankTitle = "Tay lái lụa siêu đỉnh 🌸";
+  if (mastered >= 400 || bestMock >= 28) {
+    rankTitle = "Sắp về đích rồi 🌸";
     rankColor = "mint";
-  } else if (remembered >= 150 || best >= 25) {
-    rankTitle = "Phản xạ thần tốc ⚡";
+  } else if (mastered >= 150 || bestMock >= 25) {
+    rankTitle = "Đang vào guồng ⚡";
     rankColor = "blue";
-  } else if (remembered >= 30 || sessions >= 3) {
-    rankTitle = "Tự tin cầm lái 🚗";
+  } else if (seen >= 30) {
+    rankTitle = "Đang làm quen 🚗";
     rankColor = "lavender";
   }
 
-  const percent = Math.min(100, Math.round((remembered / 600) * 100));
+  const percent = Math.min(100, Math.round((seen / 600) * 100));
 
   return (
     <div className="license-card">
       <div className="license-header">
         <div className="license-title-group">
-          <span className="license-subtitle">BẮP CON OFFICIAL STUDY PERMIT</span>
-          <h3 className="license-title">Bằng Lái Tập Sự Dịu Dàng</h3>
+          <span className="license-subtitle">THẺ HỌC LÁI CỦA BẮP</span>
+          <h3 className="license-title">Tiến độ học của Bắp</h3>
         </div>
         <div className="license-badge">
           <Car size={18} />
-          <span>HẠNG B2 / B1</span>
+          <span>HẠNG B</span>
         </div>
       </div>
 
@@ -62,13 +61,13 @@ export function DriverLicenseCard({
           </div>
           <div className="license-field-row">
             <span className="license-field-label">Điểm cao nhất:</span>
-            <strong className="license-field-val">{best}/30 câu</strong>
+            <strong className="license-field-val">{bestMock}/30 câu</strong>
           </div>
 
           <div className="license-progress-box">
             <div className="license-progress-info">
               <span>Tiến độ 600 câu:</span>
-              <strong>{remembered}/600 câu ({percent}%)</strong>
+              <strong>{seen}/600 câu ({percent}%)</strong>
             </div>
             <div className="license-progress-bar">
               <div
@@ -83,7 +82,7 @@ export function DriverLicenseCard({
         <div className="license-seal" aria-hidden="true">
           <div className="seal-circle">
             <Sparkles size={16} />
-            <span className="seal-text">READY · TO · DRIVE</span>
+            <span className="seal-text">CỐ LÊN BẮP ƠI</span>
             <ShieldCheck size={14} />
           </div>
         </div>

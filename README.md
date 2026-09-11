@@ -16,10 +16,10 @@ Mở `http://localhost:3000`.
 - 600 câu hỏi được trích từ PDF nguồn; đáp án đúng được đọc từ nét gạch chân trong PDF.
 - Parser xử lý cả đáp án xếp ngang/hai cột, kiểm tra số lựa chọn liên tục với 2–4 lựa chọn và loại heading chương bị dính vào đáp án.
 - 321 ảnh nhúng đã được tách vào `public/source-images`, trong đó 318 câu có ảnh liên kết.
-- Luyện phản xạ 30 câu cân bằng theo sáu nhóm nội dung, 5 giây/câu, đồng hồ analog và tự chuyển khi hết giờ.
+- Luyện nhanh 30 câu theo sáu nhóm nội dung, 30 giây/câu, đồng hồ analog và tự chuyển khi hết giờ.
 - Thi thử tự sinh 30 câu, có câu liệt và điều kiện đạt 27/30.
 - Luyện trọn bộ 600 câu không giới hạn thời gian, có bản đồ câu và flashback.
-- 20 đề cố định có seed; tổng 20 đề phủ đủ 600 câu, thi lại không đổi câu.
+- 20 bộ ôn cố định; tổng 20 bộ phủ đủ 600 câu, học lại không đổi câu.
 - Tiến độ, điểm cao nhất và trạng thái âm thanh lưu trong `localStorage`.
 - Chime Web Audio nguyên bản, ngắn và âm lượng nhỏ cho thao tác, đúng/sai, hết giờ và hoàn thành.
 - Giao diện bo tròn, pastel, responsive cho điện thoại; icon giao diện dùng `lucide-react`.

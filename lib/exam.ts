@@ -19,6 +19,11 @@ export type Question = {
   isLiet: boolean;
   images: string[];
   sourcePage: number;
+  explanation?: string;
+  whyCorrect?: string;
+  optionExplanations?: Record<string, string>;
+  signExplanations?: Array<{ label: string; meaning: string }>;
+  memoryTip?: string;
 };
 
 export type PresetExam = {
@@ -46,13 +51,13 @@ const REACTION_QUOTAS: Record<CategoryId, number> = {
   situation: 7,
 };
 
-const MOCK_QUOTAS: Record<CategoryId, number> = {
-  law: 10,
-  culture: 2,
-  technique: 3,
-  vehicle: 2,
-  signs: 7,
-  situation: 6,
+const MOCK_NON_LIET_QUOTAS: Record<CategoryId, number> = {
+  law: 8,
+  culture: 1,
+  technique: 1,
+  vehicle: 1,
+  signs: 9,
+  situation: 9,
 };
 
 function mulberry32(seed: number) {
@@ -108,42 +113,34 @@ function pickByQuotas(
   });
 }
 
-function guaranteeLiet(
-  selected: Question[],
-  questionBank: Question[],
-  seed: number,
-) {
-  if (selected.some((question) => question.isLiet)) {
-    return seededShuffle(selected, seed);
+export function assertUniqueQuestionIds(questions: Question[], context = "exam") {
+  const ids = questions.map((question) => question.id);
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(`Duplicate question IDs in generated ${context}`);
   }
+  return questions;
+}
 
+export function makeReactionSet(questionBank: Question[], seed = Date.now()) {
+  return assertUniqueQuestionIds(seededShuffle(
+    pickByQuotas(questionBank, REACTION_QUOTAS, seed),
+    seed + 99,
+  ).slice(0, 30), "reaction exam");
+}
+
+export function makeMockExam(questionBank: Question[], seed = Date.now()) {
   const lietPool = seededShuffle(
     questionBank.filter((question) => question.isLiet),
     seed + 1741,
   );
-  const replacement = lietPool[0];
-  if (!replacement) {
-    return selected;
-  }
+  const lietQuestion = lietPool[0];
+  if (!lietQuestion) throw new Error("Cannot generate a mock exam without a liet question");
 
-  const replacementIndex = selected.findIndex(
-    (question) => question.category === replacement.category,
-  );
-  const next = [...selected];
-  next[replacementIndex >= 0 ? replacementIndex : 0] = replacement;
-  return seededShuffle(next, seed + 31);
-}
-
-export function makeReactionSet(questionBank: Question[], seed = Date.now()) {
-  return seededShuffle(
-    pickByQuotas(questionBank, REACTION_QUOTAS, seed),
-    seed + 99,
-  ).slice(0, 30);
-}
-
-export function makeMockExam(questionBank: Question[], seed = Date.now()) {
-  const selected = pickByQuotas(questionBank, MOCK_QUOTAS, seed);
-  return guaranteeLiet(selected, questionBank, seed).slice(0, 30);
+  const remainingBank = questionBank.filter((question) => !question.isLiet);
+  const selected = pickByQuotas(remainingBank, MOCK_NON_LIET_QUOTAS, seed);
+  const questions = seededShuffle([lietQuestion, ...selected], seed + 31).slice(0, 30);
+  if (questions.length !== 30) throw new Error("Mock exam does not contain exactly 30 questions");
+  return assertUniqueQuestionIds(questions, "mock exam");
 }
 
 function distributeCategoryCounts(
@@ -233,7 +230,7 @@ export function buildPresetExams(
 
     return {
       id: examIndex + 1,
-      title: `Đề cố định ${String(examIndex + 1).padStart(2, "0")}`,
+      title: `Bộ ôn cố định ${String(examIndex + 1).padStart(2, "0")}`,
       questionIds: seededShuffle(
         questions,
         12345 + examIndex * 4099,
@@ -244,7 +241,13 @@ export function buildPresetExams(
     ...exam,
     questions: exam.questions.slice(0, questionsPerExam),
     questionIds: exam.questionIds.slice(0, questionsPerExam),
-  }));
+  })).map((exam) => {
+    assertUniqueQuestionIds(exam.questions, `preset ${exam.id}`);
+    if (exam.questions.length !== questionsPerExam) {
+      throw new Error(`Preset ${exam.id} does not contain ${questionsPerExam} questions`);
+    }
+    return exam;
+  });
 }
 
 export const CATEGORY_COLORS: Record<CategoryId, string> = {
@@ -263,4 +266,3 @@ export function makeLietSet(questionBank: Question[]): Question[] {
 export function makeChapterSet(questionBank: Question[], chapter: number): Question[] {
   return questionBank.filter((q) => q.chapter === chapter);
 }
-

@@ -5,23 +5,22 @@ import { Sparkles, Heart, RefreshCw } from "lucide-react";
 import { playSound } from "@/lib/sound";
 
 const CAT_QUOTES = [
-  "Chào Bắp iu! Hôm nay mình cùng chinh phục vài đề nha ✨",
-  "Mẹo nhỏ nè: Thấy từ 'Bị nghiêm cấm' là 99% chọn ngay nha em!",
+  "Chào Bắp iu! Hôm nay mình học một chút nha ✨",
+  "Gặp câu có ‘bị nghiêm cấm’, đọc kỹ lại đáp án vì đây thường là nhóm quy định cấm cần nhớ.",
   "Biển tròn đỏ = CẤM, Tam giác vàng = NGUY HIỂM, Biển xanh = HIỆU LỆNH!",
-  "Thứ tự xe ưu tiên: Hỏa - Sự - An - Thương (Cứu hỏa > Quân sự > Công an > Cứu thương)!",
+  "Thứ tự xe ưu tiên: Hỏa - Quân - Công - Thương (Cứu hỏa > Quân sự > Công an > Cứu thương)!",
   "Nhường đường vòng xuyến: Có đảo thì nhường TRÁI, Không đảo thì nhường PHẢI nha!",
   "60 câu điểm liệt rất quan trọng, Bắp con nhớ ôn thật kỹ nhen!",
-  "Mỗi lần học một chút, phản xạ sẽ chắc và thi sẽ bớt hồi hộp hơn nhiều!",
-  "Bông tin chắc Bắp iu thi một phát là 30/30 luôn nè 🚗💨",
-  "Nghỉ tay xíu nào, vuốt ve Bông lấy hên nha ~ Purrr purrr 🐾",
+  "Mỗi lần học một chút, phản xạ sẽ chắc hơn và thi bớt hồi hộp hơn.",
+  "Làm sai cũng được nha, miễn là mình nhớ câu đó cho lần sau.",
+  "Vuốt Bông xong rồi thì học tiếp nha 🐾",
   "Nhớ nguyên tắc vàng: Giảm tốc độ, chú ý quan sát!",
 ];
 
 const PURR_REACTIONS = [
-  "Meo meo~ Bắp iu vuốt thích quá đi à! Cố lên nhen ❤️",
-  "Purrrrr~ Năng lượng may mắn đã được truyền sang Bắp con rồi đó!",
-  "Ngoan ngoan~ Học mệt nhớ uống nước rồi học tiếp nha cô gái!",
-  "Meowww~ Tặng Bắp iu 100 điểm tự tin đi thi nè! 🐾",
+  "Vuốt Bông xong rồi thì học tiếp nha 🐾",
+  "Bắp làm được mà. Từ từ đọc kỹ từng câu nha 🐾",
+  "Mệt thì nghỉ xíu nha. Uống nước rồi mình học tiếp.",
   "Bông đang gừ gừ vì Bắp con chăm chỉ quá chừng luôn đó! 🥰",
 ];
 
@@ -79,7 +78,7 @@ export function CatMascot({ soundEnabled }: { soundEnabled: boolean }) {
         <div className="cat-bubble-header">
           <span className="cat-bubble-tag">
             <Sparkles size={13} />
-            Study Buddy của Bắp iu
+            Bông nhắc Bắp nè 🐾
           </span>
           <button
             className="cat-next-tip-btn"
