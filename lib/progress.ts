@@ -15,6 +15,16 @@ export type QuestionProgress = {
   lastAnsweredAt: string | null;
 };
 
+export type VisualProgress = {
+  label: string;
+  code?: string;
+  name: string;
+  meaning: string;
+  wrongCount: number;
+  correctCount: number;
+  lastSeenAt: string;
+};
+
 export type ModeProgress = {
   attempts: number;
   bestScore: number;
@@ -53,6 +63,7 @@ export type ProgressData = {
   version: 2;
   profile: { name: string };
   questions: Record<string, QuestionProgress>;
+  signs: Record<string, VisualProgress>;
   stats: {
     mock: ModeProgress;
     reaction: ModeProgress;
@@ -74,6 +85,7 @@ export function createDefaultProgress(sound = true): ProgressData {
     version: PROGRESS_VERSION,
     profile: { name: "Bắp" },
     questions: {},
+    signs: {},
     stats: {
       mock: { ...EMPTY_MODE_STATS.mock },
       reaction: { ...EMPTY_MODE_STATS.reaction },
@@ -179,6 +191,14 @@ export function validateProgress(value: unknown): asserts value is ProgressData 
     }
     validateQuestionProgress(question, id);
   });
+  if (value.signs !== undefined) {
+    if (!isRecord(value.signs)) throw new Error("Invalid visual progress object");
+    Object.entries(value.signs).forEach(([key, sign]) => {
+      if (!key || !isRecord(sign) || typeof sign.label !== "string" || typeof sign.name !== "string" || typeof sign.meaning !== "string" || !isInteger(sign.wrongCount) || !isInteger(sign.correctCount) || sign.wrongCount < 0 || sign.correctCount < 0 || typeof sign.lastSeenAt !== "string") {
+        throw new Error(`Invalid visual progress for ${key}`);
+      }
+    });
+  }
   if (!isRecord(value.stats)) throw new Error("Invalid stats object");
   validateModeStats(value.stats.mock, "mock");
   validateModeStats(value.stats.reaction, "reaction");
@@ -249,6 +269,7 @@ export function normalizeProgress(value: unknown, soundFallback = true): Progres
     ...fallback,
     profile: { name: isRecord(value.profile) && typeof value.profile.name === "string" ? value.profile.name : "Bắp" },
     questions,
+    signs: isRecord(value.signs) ? value.signs as unknown as ProgressData["signs"] : {},
     stats,
     examHistory: Array.isArray(value.examHistory) ? value.examHistory.slice(-100) as ExamHistoryEntry[] : [],
     currentSession: isRecord(value.currentSession) ? value.currentSession as unknown as CurrentSession : null,
@@ -328,6 +349,40 @@ export function updateQuestionProgress(
   };
 }
 
+export function updateVisualProgress(
+  progress: ProgressData,
+  question: Question,
+  isCorrect: boolean,
+  seenAt = new Date().toISOString(),
+): ProgressData {
+  const visualExplanations = question.explanation?.visualExplanations ?? [];
+  if (!visualExplanations.length) return progress;
+  const signs = { ...progress.signs };
+  visualExplanations.forEach((visual) => {
+    const key = visual.code ? `code:${visual.code}` : `name:${visual.label}:${visual.name}`;
+    const previous = signs[key] ?? {
+      label: visual.label,
+      ...(visual.code ? { code: visual.code } : {}),
+      name: visual.name,
+      meaning: visual.meaning,
+      wrongCount: 0,
+      correctCount: 0,
+      lastSeenAt: seenAt,
+    };
+    signs[key] = {
+      ...previous,
+      label: visual.label,
+      ...(visual.code ? { code: visual.code } : {}),
+      name: visual.name,
+      meaning: visual.meaning,
+      wrongCount: previous.wrongCount + (isCorrect ? 0 : 1),
+      correctCount: previous.correctCount + (isCorrect ? 1 : 0),
+      lastSeenAt: seenAt,
+    };
+  });
+  return { ...progress, signs };
+}
+
 export function updateModeProgress(
   progress: ProgressData,
   mode: "mock" | "reaction" | "liet",
@@ -372,4 +427,10 @@ export function getWeakQuestions(questionBank: Question[], progress: ProgressDat
       return (b?.wrongCount ?? 0) - (a?.wrongCount ?? 0)
         || String(b?.lastAnsweredAt ?? "").localeCompare(String(a?.lastAnsweredAt ?? ""));
     });
+}
+
+export function getWeakVisuals(progress: ProgressData) {
+  return Object.values(progress.signs)
+    .filter((visual) => visual.wrongCount > 0)
+    .sort((left, right) => right.wrongCount - left.wrongCount || right.lastSeenAt.localeCompare(left.lastSeenAt));
 }

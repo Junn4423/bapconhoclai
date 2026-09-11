@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
+    "prebuild": "python3 scripts/validate_question_explanations.py",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

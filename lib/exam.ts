@@ -8,6 +8,20 @@ export type CategoryId =
 
 export type PracticeMode = "reaction" | "mock" | "full" | "preset" | "liet" | "chapter";
 
+export type VisualExplanation = {
+  label: string;
+  code?: string;
+  name: string;
+  meaning: string;
+};
+
+export type QuestionExplanation = {
+  summary: string;
+  whyCorrect: string;
+  visualExplanations?: VisualExplanation[];
+  memoryTip?: string;
+};
+
 export type Question = {
   id: number;
   question: string;
@@ -19,11 +33,7 @@ export type Question = {
   isLiet: boolean;
   images: string[];
   sourcePage: number;
-  explanation?: string;
-  whyCorrect?: string;
-  optionExplanations?: Record<string, string>;
-  signExplanations?: Array<{ label: string; meaning: string }>;
-  memoryTip?: string;
+  explanation?: QuestionExplanation;
 };
 
 export type PresetExam = {
