@@ -110,28 +110,30 @@ export function AccessGate({ children }: { children: ReactNode }) {
         <p className="access-description">Bông đang đợi Bắp nè 🐾</p>
 
         <label className="sr-only" htmlFor="access-pin">Mã mở góc học</label>
-        <div className="pin-cells" aria-hidden="true">
-          {Array.from({ length: 6 }, (_, index) => (
-            <span className={`pin-cell ${pin[index] ? "filled" : ""}`} key={index}>
-              {pin[index] ? "•" : ""}
-            </span>
-          ))}
+        <div className="pin-entry">
+          <div className="pin-cells" aria-hidden="true">
+            {Array.from({ length: 6 }, (_, index) => (
+              <span className={`pin-cell ${pin[index] ? "filled" : ""}`} key={index}>
+                {pin[index] ? "•" : ""}
+              </span>
+            ))}
+          </div>
+          <input
+            id="access-pin"
+            className="access-pin-input"
+            value={pin}
+            onChange={(event) => {
+              setPin(event.target.value.replace(/\D/g, "").slice(0, 6));
+              setError(false);
+            }}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            autoFocus
+            aria-describedby="access-pin-error"
+          />
         </div>
-        <input
-          id="access-pin"
-          className="access-pin-input"
-          value={pin}
-          onChange={(event) => {
-            setPin(event.target.value.replace(/\D/g, "").slice(0, 6));
-            setError(false);
-          }}
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]{6}"
-          maxLength={6}
-          autoFocus
-          aria-describedby="access-pin-error"
-        />
         <button className="primary-button access-submit" type="submit" disabled={checkingPin}>
           <LockKeyhole size={16} />
           {checkingPin ? "Đang kiểm tra..." : "Mở góc học"}
