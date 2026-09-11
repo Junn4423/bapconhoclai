@@ -5,24 +5,24 @@ import { Sparkles, Heart, RefreshCw } from "lucide-react";
 import { playSound } from "@/lib/sound";
 
 const CAT_QUOTES = [
-  "Chào Minh Anh! Hôm nay mình cùng chinh phục vài đề nha ✨",
+  "Chào Bắp iu! Hôm nay mình cùng chinh phục vài đề nha ✨",
   "Mẹo nhỏ nè: Thấy từ 'Bị nghiêm cấm' là 99% chọn ngay nha em!",
   "Biển tròn đỏ = CẤM, Tam giác vàng = NGUY HIỂM, Biển xanh = HIỆU LỆNH!",
   "Thứ tự xe ưu tiên: Hỏa - Sự - An - Thương (Cứu hỏa > Quân sự > Công an > Cứu thương)!",
   "Nhường đường vòng xuyến: Có đảo thì nhường TRÁI, Không đảo thì nhường PHẢI nha!",
-  "60 câu điểm liệt rất quan trọng, Minh Anh nhớ ôn thật kỹ nhen!",
+  "60 câu điểm liệt rất quan trọng, Bắp con nhớ ôn thật kỹ nhen!",
   "Mỗi lần học một chút, phản xạ sẽ chắc và thi sẽ bớt hồi hộp hơn nhiều!",
-  "Bông tin chắc Minh Anh thi một phát là 30/30 luôn nè 🚗💨",
+  "Bông tin chắc Bắp iu thi một phát là 30/30 luôn nè 🚗💨",
   "Nghỉ tay xíu nào, vuốt ve Bông lấy hên nha ~ Purrr purrr 🐾",
   "Nhớ nguyên tắc vàng: Giảm tốc độ, chú ý quan sát!",
 ];
 
 const PURR_REACTIONS = [
-  "Meo meo~ Minh Anh vuốt thích quá đi à! Cố lên nhen ❤️",
-  "Purrrrr~ Năng lượng may mắn đã được truyền sang Minh Anh rồi đó!",
+  "Meo meo~ Bắp iu vuốt thích quá đi à! Cố lên nhen ❤️",
+  "Purrrrr~ Năng lượng may mắn đã được truyền sang Bắp con rồi đó!",
   "Ngoan ngoan~ Học mệt nhớ uống nước rồi học tiếp nha cô gái!",
-  "Meowww~ Tặng Minh Anh 100 điểm tự tin đi thi nè! 🐾",
-  "Bông đang gừ gừ vì Minh Anh chăm chỉ quá chừng luôn đó! 🥰",
+  "Meowww~ Tặng Bắp iu 100 điểm tự tin đi thi nè! 🐾",
+  "Bông đang gừ gừ vì Bắp con chăm chỉ quá chừng luôn đó! 🥰",
 ];
 
 export function CatMascot({ soundEnabled }: { soundEnabled: boolean }) {
@@ -79,7 +79,7 @@ export function CatMascot({ soundEnabled }: { soundEnabled: boolean }) {
         <div className="cat-bubble-header">
           <span className="cat-bubble-tag">
             <Sparkles size={13} />
-            Study Buddy của Minh Anh
+            Study Buddy của Bắp iu
           </span>
           <button
             className="cat-next-tip-btn"

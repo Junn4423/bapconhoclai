@@ -1456,6 +1456,10 @@ a {
 .side-stack {
   display: grid;
   gap: 18px;
+  position: sticky;
+  top: 88px;
+  align-self: start;
+  min-width: 0;
 }
 
 .side-panel {
@@ -1540,6 +1544,36 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+}
+
+.question-map-panel {
+  min-height: 0;
+}
+
+.question-map-scroll {
+  max-height: min(430px, calc(100vh - 300px));
+  min-height: 0;
+  padding: 2px 6px 4px 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #e3b2ca transparent;
+}
+
+.question-map-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.question-map-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.question-map-scroll::-webkit-scrollbar-thumb {
+  background: #e3b2ca;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
 }
 
 .question-map {

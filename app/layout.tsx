@@ -17,8 +17,11 @@ const quicksand = Quicksand({
 });
 
 export const metadata: Metadata = {
-  title: "Minh Anh học lái",
-  description: "Góc học lý thuyết lái xe dịu dàng dành riêng cho Minh Anh.",
+  title: "Bắp con học lái",
+  description: "Góc học lý thuyết lái xe dịu dàng dành riêng cho Bắp iu.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

@@ -27,7 +27,17 @@ LIET_IDS = {
 
 QUESTION_RE = re.compile(r"^\s*Câu\s*(\d+)\s*[\.:]", re.IGNORECASE)
 OPTION_RE = re.compile(r"^\s*([1-4])\s*[\.)]\s*(.*)$")
+OPTION_TOKEN_RE = re.compile(r"^[1-4][\.)]$")
+CHAPTER_RE = re.compile(r"^\s*CHƯƠNG\s+[IVX]+\s*[\.:]", re.IGNORECASE)
 PAGE_NUMBER_RE = re.compile(r"^\d{1,3}$")
+
+# The PDF uses a few different option layouts: one option per line, options
+# in two columns, and compact horizontal options. A numeric token in the
+# option text (for example the "1." in "Biển 1.") must not be mistaken for
+# a new option. In the compact layouts, actual option markers start a new
+# visual column and therefore have a noticeably larger gap from the previous
+# word than punctuation inside the option text.
+OPTION_COLUMN_GAP = 24
 
 CATEGORY_META = (
     (1, 180, 1, "law", "Luật & quy tắc"),
@@ -40,7 +50,10 @@ CATEGORY_META = (
 
 
 def normalize(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip()
+    value = re.sub(r"\s+", " ", value).strip()
+    # pdfminer occasionally separates the Vietnamese word "bộ" around its
+    # diacritic-bearing character. Keep the source wording intact in JSON.
+    return value.replace("b ộ", "bộ")
 
 
 def is_dark(value: object) -> bool:
@@ -88,8 +101,9 @@ def make_page_lines(page: pdfplumber.page.Page, page_number: int) -> list[dict]:
         target["x1"] = max(target["x1"], word["x1"])
 
     for line in lines:
+        line["words"] = sorted(line["words"], key=lambda item: item["x0"])
         line["text"] = " ".join(
-            word["text"] for word in sorted(line["words"], key=lambda item: item["x0"])
+            word["text"] for word in line["words"]
         )
     return lines
 
@@ -109,6 +123,57 @@ def has_underline(line: dict, underlines: list[tuple[int, dict]]) -> bool:
         if overlap >= threshold:
             return True
     return False
+
+
+def split_option_line(line: dict) -> list[dict]:
+    """Split a visual line that contains multiple horizontally-laid options."""
+
+    words = line["words"]
+    marker_indexes: list[int] = []
+    for index, word in enumerate(words):
+        if not OPTION_TOKEN_RE.fullmatch(word["text"]):
+            continue
+        if index == 0 or word["x0"] - words[index - 1]["x1"] >= OPTION_COLUMN_GAP:
+            marker_indexes.append(index)
+
+    if not marker_indexes:
+        return []
+
+    fragments: list[dict] = []
+    for marker_position, start in enumerate(marker_indexes):
+        end = (
+            marker_indexes[marker_position + 1]
+            if marker_position + 1 < len(marker_indexes)
+            else len(words)
+        )
+        fragment_words = words[start:end]
+        fragment = dict(line)
+        fragment["words"] = fragment_words
+        fragment["x0"] = fragment_words[0]["x0"]
+        fragment["x1"] = fragment_words[-1]["x1"]
+        fragment["text"] = " ".join(word["text"] for word in fragment_words)
+        fragments.append(fragment)
+    return fragments
+
+
+def continuation_target(line: dict, option_groups: dict[int, dict]) -> dict | None:
+    """Find the most recent option in the same visual column as a wrapped line."""
+
+    candidates = [
+        group
+        for group in option_groups.values()
+        if abs(group["lines"][0]["x0"] - line["x0"]) <= OPTION_COLUMN_GAP
+    ]
+    if not candidates:
+        return None
+    return max(
+        candidates,
+        key=lambda group: (
+            group["lines"][-1]["page"],
+            group["lines"][-1]["top"],
+            group["number"],
+        ),
+    )
 
 
 def image_path(image_dir: Path, image_prefix: str, index: int) -> str | None:
@@ -173,23 +238,47 @@ def extract(pdf_path: Path, image_dir: Path, image_prefix: str) -> dict:
         block = all_lines[line_index:end_index]
 
         prompt_lines: list[dict] = []
-        option_groups: list[dict] = []
+        option_groups: dict[int, dict] = {}
         current_option: dict | None = None
+        skip_chapter_tail = False
 
         for line in block:
             text = line["text"].strip()
+            if skip_chapter_tail:
+                continue
             if PAGE_NUMBER_RE.fullmatch(text):
                 continue
-            option_match = OPTION_RE.match(text)
-            if option_match:
-                current_option = {
-                    "number": int(option_match.group(1)),
-                    "first_text": option_match.group(2),
-                    "lines": [line],
-                }
-                option_groups.append(current_option)
-            elif current_option is not None:
-                current_option["lines"].append(line)
+            if CHAPTER_RE.match(text):
+                # Chapter headings can wrap onto another visual line. They
+                # sit between the last question of a chapter and the first
+                # question of the next one, so the remainder of this block is
+                # heading text rather than an answer continuation.
+                skip_chapter_tail = True
+                continue
+
+            option_fragments = split_option_line(line)
+            if option_fragments:
+                for fragment in option_fragments:
+                    option_match = OPTION_RE.match(fragment["text"])
+                    if option_match is None:
+                        raise ValueError(
+                            f"Question {number} has an invalid option marker: "
+                            f"{fragment['text']}"
+                        )
+                    option_number = int(option_match.group(1))
+                    current_option = option_groups.setdefault(
+                        option_number,
+                        {
+                            "number": option_number,
+                            "lines": [],
+                        },
+                    )
+                    current_option["lines"].append(fragment)
+                continue
+
+            if current_option is not None:
+                target = continuation_target(line, option_groups) or current_option
+                target["lines"].append(line)
             else:
                 prompt_lines.append(line)
 
@@ -200,7 +289,16 @@ def extract(pdf_path: Path, image_dir: Path, image_prefix: str) -> dict:
 
         options: list[str] = []
         correct_indices: list[int] = []
-        for option_index, option in enumerate(option_groups):
+        option_numbers = sorted(option_groups)
+        if option_numbers != list(range(1, len(option_numbers) + 1)):
+            raise ValueError(
+                f"Question {number} has non-contiguous option numbers: {option_numbers}"
+            )
+        if not 2 <= len(option_numbers) <= 4:
+            raise ValueError(f"Question {number} has {len(option_numbers)} options")
+
+        for option_index, option_number in enumerate(option_numbers):
+            option = option_groups[option_number]
             first_line = option["lines"][0]["text"]
             first_line = OPTION_RE.sub(r"\2", first_line, count=1)
             option_text = normalize(
@@ -214,9 +312,6 @@ def extract(pdf_path: Path, image_dir: Path, image_prefix: str) -> dict:
             raise ValueError(
                 f"Question {number} has {len(correct_indices)} underlined answers"
             )
-        if not 1 <= len(options) <= 4:
-            raise ValueError(f"Question {number} has {len(options)} options")
-
         chapter, category, category_label = get_category(number)
         linked_images = [
             image_path(image_dir, image_prefix, image["index"])

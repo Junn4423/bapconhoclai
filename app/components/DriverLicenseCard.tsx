@@ -33,7 +33,7 @@ export function DriverLicenseCard({
     <div className="license-card">
       <div className="license-header">
         <div className="license-title-group">
-          <span className="license-subtitle">MINH ANH OFFICIAL STUDY PERMIT</span>
+          <span className="license-subtitle">BẮP CON OFFICIAL STUDY PERMIT</span>
           <h3 className="license-title">Bằng Lái Tập Sự Dịu Dàng</h3>
         </div>
         <div className="license-badge">
@@ -54,7 +54,7 @@ export function DriverLicenseCard({
         <div className="license-details">
           <div className="license-field-row">
             <span className="license-field-label">Học viên:</span>
-            <strong className="license-field-val">Minh Anh</strong>
+            <strong className="license-field-val">Bắp iu</strong>
           </div>
           <div className="license-field-row">
             <span className="license-field-label">Mục tiêu:</span>

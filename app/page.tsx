@@ -270,12 +270,12 @@ function AppHeader({
 }) {
   return (
     <header className="site-header">
-      <button className="brand-lockup" onClick={onHome} aria-label="Về góc học của Minh Anh">
+      <button className="brand-lockup" onClick={onHome} aria-label="Về góc học của Bắp iu">
         <span className="brand-mark">
           <PawPrint size={22} strokeWidth={2.2} />
         </span>
         <span className="brand-copy">
-          <span className="brand-name">Minh Anh học lái</span>
+          <span className="brand-name">Bắp con học lái</span>
           <span className="brand-subtitle">little road, big confidence</span>
         </span>
       </button>
@@ -320,13 +320,13 @@ function HomeView({
           <article className="hero-card">
             <div className="hero-kicker">
               <Heart size={15} fill="currentColor" />
-              hello, Minh Anh
+              hello, Bắp iu
             </div>
             <h1 className="hero-title">
               Học lái thật <span>nhẹ nhàng.</span>
             </h1>
             <p className="hero-description">
-              Chào Minh Anh, đây là góc nhỏ để em luyện 600 câu lý thuyết theo
+              Chào Bắp iu, đây là góc nhỏ để em luyện 600 câu lý thuyết theo
               nhịp của mình. Mỗi lần học một chút, phản xạ sẽ chắc hơn và ngày
               thi cũng bớt hồi hộp hơn.
             </p>
@@ -472,7 +472,7 @@ function HomeView({
             <h2 className="section-title">Mẹo nhớ nhanh trong phòng thi</h2>
           </div>
           <p className="section-note">
-            Những bí kíp đơn giản nhưng cực kỳ hữu ích giúp Minh Anh không bao giờ bị bẫy!
+            Những bí kíp đơn giản nhưng cực kỳ hữu ích giúp Bắp con không bao giờ bị bẫy!
           </p>
         </div>
 
@@ -502,7 +502,7 @@ function HomeView({
               {QUICK_TIPS[activeTipTab].content}
             </p>
             <div className="tip-card-footer">
-              <span>Được biên soạn riêng cho Minh Anh</span>
+              <span>Được biên soạn riêng cho Bắp iu</span>
               <PawPrint size={15} />
             </div>
           </div>
@@ -824,7 +824,7 @@ function ExamView({
             />
           )}
 
-          <div className="side-panel">
+          <div className="side-panel question-map-panel">
             <h2 className="side-panel-title">
               <span>
                 <LayoutGrid size={16} /> Bảng câu hỏi
@@ -833,24 +833,26 @@ function ExamView({
                 {answeredCount}/{session.questions.length}
               </small>
             </h2>
-            <div className="question-map">
-              {session.questions.map((item, index) => {
-                const isAnswered =
-                  answers[item.id] !== undefined && answers[item.id] !== null;
-                return (
-                  <button
-                    className={`map-button ${
-                      index === currentIndex ? "current" : ""
-                    } ${isAnswered ? "answered" : ""}`}
-                    key={item.id}
-                    onClick={() => onJump(index)}
-                    disabled={isReaction}
-                    aria-label={`Đi tới câu ${index + 1}`}
-                  >
-                    {index + 1}
-                  </button>
-                );
-              })}
+            <div className="question-map-scroll" aria-label="Danh sách câu hỏi có thể cuộn">
+              <div className="question-map">
+                {session.questions.map((item, index) => {
+                  const isAnswered =
+                    answers[item.id] !== undefined && answers[item.id] !== null;
+                  return (
+                    <button
+                      className={`map-button ${
+                        index === currentIndex ? "current" : ""
+                      } ${isAnswered ? "answered" : ""}`}
+                      key={item.id}
+                      onClick={() => onJump(index)}
+                      disabled={isReaction}
+                      aria-label={`Đi tới câu ${index + 1}`}
+                    >
+                      {index + 1}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <button
@@ -974,7 +976,7 @@ function ResultView({
           </div>
           <h1 className="result-title">
             {result.passed === true
-              ? "Tuyệt vời lắm Minh Anh ơi!"
+              ? "Tuyệt vời lắm Bắp iu ơi!"
               : result.lietWrong
               ? "Rất tiếc, dính câu điểm liệt rồi!"
               : percentage >= 80
@@ -1135,10 +1137,10 @@ export default function Page() {
   // Load stats & sound setting from localStorage
   useEffect(() => {
     try {
-      const savedStats = localStorage.getItem("minh_anh_stats");
+      const savedStats = localStorage.getItem("bap_con_stats");
       if (savedStats) setStats(JSON.parse(savedStats));
 
-      const savedSound = localStorage.getItem("minh_anh_sound");
+      const savedSound = localStorage.getItem("bap_con_sound");
       if (savedSound !== null) setSoundEnabled(savedSound === "true");
     } catch {
       // Ignore localStorage errors in private mode
@@ -1148,7 +1150,7 @@ export default function Page() {
   const saveStats = (newStats: Stats) => {
     setStats(newStats);
     try {
-      localStorage.setItem("minh_anh_stats", JSON.stringify(newStats));
+      localStorage.setItem("bap_con_stats", JSON.stringify(newStats));
     } catch {}
   };
 
@@ -1156,7 +1158,7 @@ export default function Page() {
     const next = !soundEnabled;
     setSoundEnabled(next);
     try {
-      localStorage.setItem("minh_anh_sound", String(next));
+      localStorage.setItem("bap_con_sound", String(next));
     } catch {}
     if (next) {
       playSound("toggle", true);

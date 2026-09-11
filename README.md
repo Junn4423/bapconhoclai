@@ -1,6 +1,6 @@
-# Minh Anh học lái
+# Bắp con học lái
 
-Webapp Next.js thuần frontend dành cho Minh Anh luyện bộ 600 câu hỏi sát hạch lái xe hạng B.
+Webapp Next.js thuần frontend dành cho Bắp iu luyện bộ 600 câu hỏi sát hạch lái xe hạng B.
 
 ## Chạy local
 
@@ -14,6 +14,7 @@ Mở `http://localhost:3000`.
 ## Có sẵn trong app
 
 - 600 câu hỏi được trích từ PDF nguồn; đáp án đúng được đọc từ nét gạch chân trong PDF.
+- Parser xử lý cả đáp án xếp ngang/hai cột, kiểm tra số lựa chọn liên tục với 2–4 lựa chọn và loại heading chương bị dính vào đáp án.
 - 321 ảnh nhúng đã được tách vào `public/source-images`, trong đó 318 câu có ảnh liên kết.
 - Luyện phản xạ 30 câu cân bằng theo sáu nhóm nội dung, 5 giây/câu, đồng hồ analog và tự chuyển khi hết giờ.
 - Thi thử tự sinh 30 câu, có câu liệt và điều kiện đạt 27/30.
