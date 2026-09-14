@@ -2064,16 +2064,6 @@ a {
   background: rgba(245, 101, 101, 0.12);
 }
 
-/* Locked answer option in exam mode */
-.answer-option.answer-locked {
-  cursor: default;
-  opacity: 0.85;
-}
-.answer-option.answer-locked:hover {
-  transform: none;
-  box-shadow: 0 8px 22px rgba(215, 120, 165, 0.16);
-}
-
 /* ============================================================
    RESPONSIVE MEDIA QUERIES
    ============================================================ */
