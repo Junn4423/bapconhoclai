@@ -515,6 +515,80 @@ export function updateQuestionProgress(
   };
 }
 
+export function changeQuestionProgress(
+  progress: ProgressData,
+  questionId: number,
+  previousAnswer: number,
+  newAnswer: number,
+  correctAnswer: number,
+  answeredAt = new Date().toISOString(),
+): ProgressData {
+  const key = String(questionId);
+  const previous = progress.questions[key];
+  if (!previous) {
+    return updateQuestionProgress(progress, questionId, newAnswer, newAnswer === correctAnswer, answeredAt);
+  }
+  if (previousAnswer === newAnswer) return progress;
+
+  const wasCorrect = previousAnswer === correctAnswer;
+  const isCorrect = newAnswer === correctAnswer;
+
+  let correctCount = previous.correctCount;
+  let wrongCount = previous.wrongCount;
+
+  if (wasCorrect && !isCorrect) {
+    correctCount = Math.max(0, correctCount - 1);
+    wrongCount = wrongCount + 1;
+  } else if (!wasCorrect && isCorrect) {
+    wrongCount = Math.max(0, wrongCount - 1);
+    correctCount = correctCount + 1;
+  }
+
+  const nextQuestion: QuestionProgress = {
+    ...previous,
+    attempts: previous.attempts,
+    correctCount,
+    wrongCount,
+    lastAnswer: newAnswer,
+    lastCorrect: isCorrect,
+    mastered: previous.attempts >= 2 && correctCount >= 2 && isCorrect,
+    lastAnsweredAt: answeredAt,
+  };
+
+  return {
+    ...progress,
+    questions: { ...progress.questions, [key]: nextQuestion },
+  };
+}
+
+export function changeVisualProgress(
+  progress: ProgressData,
+  question: Question,
+  wasCorrect: boolean,
+  isCorrect: boolean,
+  seenAt = new Date().toISOString(),
+): ProgressData {
+  if (wasCorrect === isCorrect) return progress;
+  const visualExplanations = question.explanation?.visualExplanations ?? [];
+  if (!visualExplanations.length) return progress;
+
+  const signs = { ...progress.signs };
+  visualExplanations.forEach((visual) => {
+    const key = visual.code ? `code:${visual.code}` : `name:${visual.label}:${visual.name}`;
+    const prev = signs[key];
+    if (!prev) return;
+
+    signs[key] = {
+      ...prev,
+      wrongCount: wasCorrect && !isCorrect ? prev.wrongCount + 1 : Math.max(0, prev.wrongCount - 1),
+      correctCount: !wasCorrect && isCorrect ? prev.correctCount + 1 : Math.max(0, prev.correctCount - 1),
+      lastSeenAt: seenAt,
+    };
+  });
+
+  return { ...progress, signs };
+}
+
 export function updateVisualProgress(
   progress: ProgressData,
   question: Question,

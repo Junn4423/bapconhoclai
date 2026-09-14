@@ -78,6 +78,8 @@ import {
   updateModeProgress,
   updateVisualProgress,
   updateQuestionProgress,
+  changeQuestionProgress,
+  changeVisualProgress,
   validateProgress,
   type CurrentSession,
   type ProgressData,
@@ -309,14 +311,27 @@ function HomeView({ progress, currentSession, sound, onSound, onStart, onWrong, 
 
 function PresetPicker({ presets, progress, onBack, onStart }: { presets: PresetExam[]; progress: ProgressData; onBack: () => void; onStart: (preset: PresetExam) => void }) {
   const getPresetStatus = (presetId: number): { status: "passed" | "failed" | "none"; score?: number; total?: number; reason?: string } => {
-    const entries = progress.examHistory.filter((entry) => entry.type === "preset" && (entry as { presetId?: number }).presetId === presetId);
+    const preset = presets.find((p) => p.id === presetId);
+    const entries = progress.examHistory.filter((entry) => {
+      if (entry.type !== "preset") return false;
+      if (entry.presetId === presetId) return true;
+      if (preset && entry.questionIds.length === preset.questions.length) {
+        return preset.questionIds.every((qid) => entry.questionIds.includes(qid));
+      }
+      return false;
+    });
     if (!entries.length) return { status: "none" };
-    // Find the entry with presetId — examHistory entries from preset mode have presetId stored in the session id pattern
-    // Actually, let's check by matching questionIds with preset questionIds
+
+    // Lỗi 2: If user has EVER passed this preset, keep it passed with their best score!
+    const passedEntries = entries.filter((entry) => entry.passed === true);
+    if (passedEntries.length > 0) {
+      const best = passedEntries.reduce((max, curr) => (curr.score > max.score ? curr : max), passedEntries[0]);
+      return { status: "passed", score: best.score, total: best.total };
+    }
+
+    // If never passed, show latest failure reason
     const latest = entries[entries.length - 1];
-    if (latest.passed === true) return { status: "passed", score: latest.score, total: latest.total };
     const wrongCount = latest.wrongQuestionIds.length;
-    // Check if failed due to liet question
     const lietWrong = latest.wrongQuestionIds.some((qid) => {
       const q = QUESTION_BANK.find((item) => item.id === qid);
       return q?.isLiet;
@@ -372,7 +387,7 @@ function ResultView({ result, onRetry, onNew, onHome }: { result: ExamResult; on
   const [filter, setFilter] = useState<"all" | "wrong" | "correct">("all");
   const wrong = result.rows.filter((row) => !row.isCorrect).length;
   const rows = result.rows.filter((row) => filter === "all" || (filter === "wrong" ? !row.isCorrect : row.isCorrect));
-  return <main className="container page-section"><div className="result-hero"><div className="score-ring"><span className="score-value">{result.score}</span><span className="score-total">/{result.rows.length}</span></div><div className="result-copy"><span className="result-pill">{result.passed === null ? "Hoàn thành bài luyện" : result.passed ? "ĐẠT YÊU CẦU 🎉" : "CHƯA ĐẠT"}</span><h1 className="result-title">{result.passed ? "Đậu rồi nè 🥳" : result.lietWrong ? "Dính câu điểm liệt rồi." : "Chưa qua lần này rồi."}</h1><p className="result-desc">{result.passed ? `Sai ${wrong} câu. Coi lại một lượt nha.` : "Sai chỗ nào mình coi lại chỗ đó nha."}</p><div className="result-actions"><button className="primary-button small-button" onClick={onRetry}><RotateCcw size={15} /> Làm lại</button><button className="secondary-button small-button" onClick={onNew}><Sparkles size={15} /> {result.mode === "mock" ? "Đề mới" : "Làm đề khác"}</button><button className="ghost-button small-button" onClick={onHome}><PawPrint size={15} /> Về góc học</button></div></div></div><section className="review-section"><div className="review-header"><div><h2 className="section-title">Xem lại đáp án</h2><p className="section-note">Tổng {result.rows.length} câu · Đúng {result.score} · Sai {wrong}</p></div><div className="filter-tabs"><button className={`filter-tab ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>Tất cả ({result.rows.length})</button><button className={`filter-tab ${filter === "wrong" ? "active" : ""}`} onClick={() => setFilter("wrong")}>Câu sai ({wrong})</button><button className={`filter-tab ${filter === "correct" ? "active" : ""}`} onClick={() => setFilter("correct")}>Câu đúng ({result.score})</button></div></div><div className="review-list">{rows.map(({ question, selected, isCorrect }) => <article className={`review-card ${isCorrect ? "correct-card" : "wrong-card"}`} key={question.id}><div className="review-card-top"><span className="question-label">Câu #{question.id}</span><span className={`review-status-badge ${isCorrect ? "badge-correct" : "badge-wrong"}`}>{isCorrect ? <><CheckCircle2 size={16} /> Đúng</> : <><X size={16} /> Sai</>}</span></div><h3 className="review-question-title">{question.question}</h3><QuestionImages question={question} /><div className="review-options">{question.options.map((option, optionIndex) => <div className={`review-option-row ${optionIndex === question.correct ? "is-right" : selected === optionIndex ? "is-wrong-choice" : ""}`} key={optionIndex}><span className="review-opt-letter">{String.fromCharCode(65 + optionIndex)}</span><span className="review-opt-text">{option}</span>{optionIndex === question.correct && <span className="review-badge-right"><Check size={14} /> Đáp án đúng</span>}{selected === optionIndex && optionIndex !== question.correct && <span className="review-badge-wrong"><X size={14} /> Em đã chọn</span>}</div>)}</div>{!isCorrect && <Explanation question={question} selected={selected} />}</article>)}</div></section></main>;
+  return <main className="container page-section"><div className="result-hero"><div className="score-ring"><span className="score-value">{result.score}</span><span className="score-total">/{result.rows.length}</span></div><div className="result-copy"><span className="result-pill">{result.passed === null ? "Hoàn thành bài luyện" : result.passed ? "ĐẠT YÊU CẦU 🎉" : "CHƯA ĐẠT"}</span><h1 className="result-title">{result.passed ? "Đậu rồi nè 🥳" : result.lietWrong ? "Dính câu điểm liệt rồi." : "Chưa qua lần này rồi."}</h1><p className="result-desc">{result.passed ? `Sai ${wrong} câu. Coi lại một lượt nha.` : "Sai chỗ nào mình coi lại chỗ đó nha."}</p><div className="result-actions"><button className="primary-button small-button" onClick={onRetry}><RotateCcw size={15} /> Làm lại</button><button className="secondary-button small-button" onClick={onNew}><Sparkles size={15} /> {result.mode === "mock" ? "Đề mới" : result.mode === "preset" ? "Chọn bộ khác" : "Làm đề khác"}</button><button className="ghost-button small-button" onClick={onHome}><PawPrint size={15} /> Về góc học</button></div></div></div><section className="review-section"><div className="review-header"><div><h2 className="section-title">Xem lại đáp án</h2><p className="section-note">Tổng {result.rows.length} câu · Đúng {result.score} · Sai {wrong}</p></div><div className="filter-tabs"><button className={`filter-tab ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>Tất cả ({result.rows.length})</button><button className={`filter-tab ${filter === "wrong" ? "active" : ""}`} onClick={() => setFilter("wrong")}>Câu sai ({wrong})</button><button className={`filter-tab ${filter === "correct" ? "active" : ""}`} onClick={() => setFilter("correct")}>Câu đúng ({result.score})</button></div></div><div className="review-list">{rows.map(({ question, selected, isCorrect }) => <article className={`review-card ${isCorrect ? "correct-card" : "wrong-card"}`} key={question.id}><div className="review-card-top"><span className="question-label">Câu #{question.id}</span><span className={`review-status-badge ${isCorrect ? "badge-correct" : "badge-wrong"}`}>{isCorrect ? <><CheckCircle2 size={16} /> Đúng</> : <><X size={16} /> Sai</>}</span></div><h3 className="review-question-title">{question.question}</h3><QuestionImages question={question} /><div className="review-options">{question.options.map((option, optionIndex) => <div className={`review-option-row ${optionIndex === question.correct ? "is-right" : selected === optionIndex ? "is-wrong-choice" : ""}`} key={optionIndex}><span className="review-opt-letter">{String.fromCharCode(65 + optionIndex)}</span><span className="review-opt-text">{option}</span>{optionIndex === question.correct && <span className="review-badge-right"><Check size={14} /> Đáp án đúng</span>}{selected === optionIndex && optionIndex !== question.correct && <span className="review-badge-wrong"><X size={14} /> Em đã chọn</span>}</div>)}</div><Explanation question={question} selected={selected} /></article>)}</div></section></main>;
 }
 
 export function ExamApp() {
@@ -587,7 +602,33 @@ export function ExamApp() {
     setSession(restored); setIndex(Math.min(saved.currentIndex, questions.length - 1)); setAnswers(restoredAnswers); answersRef.current = restoredAnswers; setSeconds(saved.timer === "question" ? null : saved.remainingSeconds); setReady(false); setView("exam");
   };
   const isExamMode = session ? ["mock", "preset", "reaction"].includes(session.mode) : false;
-  const answer = (option: number) => { if (!session) return; const question = session.questions[index]; const wasAnswered = answers[question.id] !== undefined && answers[question.id] !== null; if (isExamMode && wasAnswered) return; const nextAnswers = { ...answers, [question.id]: option }; setAnswers(nextAnswers); answersRef.current = nextAnswers; if (!wasAnswered) { setProgress((old) => { let next = updateQuestionProgress(old, question.id, option, option === question.correct); next = updateVisualProgress(next, question, option === question.correct); saveProgress(next); return next; }); } else { setProgress((old) => { let next = updateQuestionProgress(old, question.id, option, option === question.correct); next = updateVisualProgress(next, question, option === question.correct); saveProgress(next); return next; }); } saveSnapshot(session, index, nextAnswers, seconds); };
+  const answer = (option: number) => {
+    if (!session) return;
+    const question = session.questions[index];
+    const previousOption = answers[question.id] ?? null;
+    const wasAnswered = previousOption !== null;
+    if (isExamMode && wasAnswered) return;
+    if (wasAnswered && previousOption === option) return;
+    const nextAnswers = { ...answers, [question.id]: option };
+    setAnswers(nextAnswers);
+    answersRef.current = nextAnswers;
+    if (!wasAnswered) {
+      setProgress((old) => {
+        let next = updateQuestionProgress(old, question.id, option, option === question.correct);
+        next = updateVisualProgress(next, question, option === question.correct);
+        saveProgress(next);
+        return next;
+      });
+    } else {
+      setProgress((old) => {
+        let next = changeQuestionProgress(old, question.id, previousOption, option, question.correct);
+        next = changeVisualProgress(next, question, previousOption === question.correct, option === question.correct);
+        saveProgress(next);
+        return next;
+      });
+    }
+    saveSnapshot(session, index, nextAnswers, seconds);
+  };
   const nextQuestion = () => { if (!session) return; if (index >= session.questions.length - 1) { finish(); return; } const nextIndex = index + 1; setIndex(nextIndex); setReady(false); if (session.timer === "question") setSeconds(null); saveSnapshot(session, nextIndex, answers, session.timer === "question" ? null : seconds); };
   const previousQuestion = () => { if (!session || index <= 0) return; const nextIndex = index - 1; setIndex(nextIndex); setReady(false); if (session.timer === "question") setSeconds(null); saveSnapshot(session, nextIndex, answers, session.timer === "question" ? null : seconds); };
   const jump = (nextIndex: number) => { if (!session || session.timer === "question") return; setIndex(nextIndex); setReady(false); saveSnapshot(session, nextIndex, answers, seconds); };
@@ -601,7 +642,7 @@ export function ExamApp() {
       {view === "weak-picker" && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><WeakQuestionsPicker progress={progress} onBack={home} onStart={(questions) => start("chapter", questions, "Câu Bắp hay nhầm")} /></>}
       {view === "preset-picker" && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><PresetPicker presets={presets} progress={progress} onBack={home} onStart={(preset) => start("preset", preset.questions, preset.title, preset.id)} /></>}
       {view === "exam" && session && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><ExamView session={session} index={index} answers={answers} seconds={seconds} ready={ready} sound={sound} locked={isExamMode} onReady={setReady} onAnswer={answer} onNext={nextQuestion} onPrevious={previousQuestion} onJump={jump} onExit={home} onFinish={finish} /></>}
-      {view === "result" && result && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><ResultView result={result} onRetry={() => session && start(session.mode, session.questions, session.title, session.presetId)} onNew={() => session && (session.mode === "mock" || session.mode === "reaction" ? start(session.mode) : start(session.mode, session.questions, session.title, session.presetId))} onHome={home} /></>}
+      {view === "result" && result && <><AppHeader sound={sound} onSound={toggleSound} onHome={home} onSettings={() => setSettings(true)} /><ResultView result={result} onRetry={() => session && start(session.mode, session.questions, session.title, session.presetId)} onNew={() => { if (!session) return; if (session.mode === "preset") { setSession(null); setResult(null); setView("preset-picker"); } else if (session.mode === "mock" || session.mode === "reaction") { start(session.mode); } else { setSession(null); setResult(null); setView("home"); } }} onHome={home} /></>}
       {settings && <SettingsModal sound={sound} snapshots={snapshots} onSound={toggleSound} onClose={() => setSettings(false)} onLock={() => { setSettings(false); lockAccess(); }} onExport={exportProgress} onImport={importProgress} onReset={resetLearning} onWipe={wipeDeviceData} onCreateSnapshot={createSnapshot} onRefreshSnapshots={() => { void listProgressSnapshots().then(setSnapshots); }} onRestoreSnapshot={restoreSnapshot} />}
       {storageNotice && <aside className="storage-notice" role="status"><div><strong>{storageNotice}</strong>{recoveryActions && <span>File backup hợp lệ có thể khôi phục trong Cài đặt.</span>}</div>{recoveryActions && <div className="storage-notice-actions"><button className="secondary-button small-button" onClick={() => setSettings(true)}>Khôi phục file backup</button><button className="ghost-button small-button" onClick={resetLearning}>Bắt đầu lại</button></div>}<button className="icon-button" onClick={() => setStorageNotice(null)} aria-label="Đóng thông báo"><X size={15} /></button></aside>}
       <RewardUnlockToast rewardIds={newRewardIds} onClose={() => setNewRewardIds([])} />
