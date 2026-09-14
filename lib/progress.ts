@@ -59,6 +59,7 @@ export type ExamHistoryEntry = {
   questionIds: number[];
   wrongQuestionIds: number[];
   createdAt: string;
+  presetId?: number;
 };
 
 export type ProgressData = {
