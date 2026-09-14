@@ -87,6 +87,7 @@ import {
 } from "@/lib/progress";
 
 const QUESTION_BANK = questionData.questions as Question[];
+const EXAM_TIME_LIMIT_SECONDS = 20 * 60;
 const CHAPTERS = [
   [1, "Pháp luật & quy tắc giao thông", "Khái niệm, quy tắc chung, làn đường, tốc độ và xử phạt cơ bản.", 180],
   [2, "Văn hóa giao thông, đạo đức người lái xe, kỹ năng PCCC và cứu hộ, cứu nạn", "Văn hóa giao thông, đạo đức người lái xe, kỹ năng phòng cháy chữa cháy và cứu hộ, cứu nạn.", 25],
@@ -582,7 +583,8 @@ export function ExamApp() {
     let limit: number | null = null;
     let titleValue = title || modeTitle(mode);
     if (!customQuestions && mode === "reaction") { questions = makeReactionSet(QUESTION_BANK); timer = "question"; limit = 30; }
-    if (!customQuestions && mode === "mock") { questions = makeMockExam(QUESTION_BANK); timer = "exam"; limit = 20 * 60; }
+    if (!customQuestions && mode === "mock") { questions = makeMockExam(QUESTION_BANK); timer = "exam"; limit = EXAM_TIME_LIMIT_SECONDS; }
+    if (mode === "preset") { timer = "exam"; limit = EXAM_TIME_LIMIT_SECONDS; }
     if (!customQuestions && mode === "liet") { questions = makeLietSet(QUESTION_BANK); titleValue = "60 câu điểm liệt"; }
     if (!customQuestions && mode === "full") questions = QUESTION_BANK;
     if (!questions.length) return;
@@ -595,7 +597,8 @@ export function ExamApp() {
     const saved = progress.currentSession; if (!saved) return;
     const questions = saved.questionIds.map((id) => QUESTION_BANK.find((question) => question.id === id)).filter((question): question is Question => Boolean(question));
     if (questions.length !== saved.questionIds.length) { commit({ ...progress, currentSession: null }); return; }
-    const restored: Session = { id: saved.id, mode: saved.mode === "weak" ? "chapter" : saved.mode, title: saved.title, questions, timer: saved.timer, timeLimitSeconds: saved.timeLimitSeconds, presetId: saved.presetId };
+    const restoredMode = saved.mode === "weak" ? "chapter" : saved.mode;
+    const restored: Session = { id: saved.id, mode: restoredMode, title: saved.title, questions, timer: restoredMode === "preset" ? "exam" : saved.timer, timeLimitSeconds: restoredMode === "preset" ? EXAM_TIME_LIMIT_SECONDS : saved.timeLimitSeconds, presetId: saved.presetId };
     const restoredAnswers = Object.fromEntries(Object.entries(saved.answers).map(([id, answer]) => [Number(id), answer])) as AnswerMap;
     setSession(restored); setIndex(Math.min(saved.currentIndex, questions.length - 1)); setAnswers(restoredAnswers); answersRef.current = restoredAnswers; setSeconds(saved.timer === "question" ? null : saved.remainingSeconds); setReady(false); setView("exam");
   };
